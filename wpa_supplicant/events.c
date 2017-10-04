@@ -1869,13 +1869,13 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	int cur_snr = 0;
 	int ret = 0;
 
-	wpa_dbg(wpa_s, MSG_DEBUG, "Considering within-ESS reassociation");
-	wpa_dbg(wpa_s, MSG_DEBUG, "Current BSS: " MACSTR
+	wpa_dbg(wpa_s, MSG_INFO, "Considering within-ESS reassociation");
+	wpa_dbg(wpa_s, MSG_INFO, "Current BSS: " MACSTR
 		" freq=%d level=%d snr=%d est_throughput=%u",
 		MAC2STR(current_bss->bssid),
 		current_bss->freq, current_bss->level,
 		current_bss->snr, current_bss->est_throughput);
-	wpa_dbg(wpa_s, MSG_DEBUG, "Selected BSS: " MACSTR
+	wpa_dbg(wpa_s, MSG_INFO, "Selected BSS: " MACSTR
 		" freq=%d level=%d snr=%d est_throughput=%u",
 		MAC2STR(selected->bssid), selected->freq, selected->level,
 		selected->snr, selected->est_throughput);
@@ -1883,7 +1883,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	if (wpa_s->current_ssid->bssid_set &&
 	    os_memcmp(selected->bssid, wpa_s->current_ssid->bssid, ETH_ALEN) ==
 	    0) {
-		wpa_dbg(wpa_s, MSG_DEBUG, "Allow reassociation - selected BSS "
+		wpa_dbg(wpa_s, MSG_INFO, "Allow reassociation - selected BSS "
 			"has preferred BSSID");
 		return 1;
 	}
@@ -1917,14 +1917,16 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		cur_est = wpas_get_est_throughput_from_bss_snr(wpa_s,
 							       current_bss,
 							       cur_snr);
-		wpa_dbg(wpa_s, MSG_DEBUG,
+		wpa_dbg(wpa_s, MSG_INFO,
 			"Using signal poll values for the current BSS: level=%d snr=%d est_throughput=%u",
 			cur_level, cur_snr, cur_est);
 	}
 
 	if (sel_est > cur_est + 5000) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"Allow reassociation - selected BSS has better estimated throughput");
+		wpa_dbg(wpa_s, MSG_INFO,
+			"Allow reassociation - selected BSS has better "
+			"estimated throughput (current: %u, selected: %u)",
+			cur_est, sel_est);
 		return 1;
 	}
 
@@ -1932,7 +1934,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 
 	if (cur_level < 0 && cur_level > selected->level + to_5ghz * 2 &&
 	    sel_est < cur_est * 1.2) {
-		wpa_dbg(wpa_s, MSG_DEBUG, "Skip roam - Current BSS has better "
+		wpa_dbg(wpa_s, MSG_INFO, "Skip roam - Current BSS has better "
 			"signal level");
 		return 0;
 	}
@@ -1984,7 +1986,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		min_diff -= 2;
 	diff = selected->level - cur_level;
 	if (diff < min_diff) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
+		wpa_dbg(wpa_s, MSG_INFO,
 			"Skip roam - too small difference in signal level (%d < %d)",
 			diff, min_diff);
 		ret = 0;
