@@ -1601,7 +1601,7 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
 
 	*num_modes = 0;
 	*flags = 0;
-	.dfs_domain = 0;
+	*dfs_domain = 0;
 
 	feat = get_nl80211_protocol_features(drv);
 	if (feat & NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP)
