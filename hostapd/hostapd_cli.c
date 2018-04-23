@@ -1347,6 +1347,22 @@ static int hostapd_cli_cmd_sta_policy_add(struct wpa_ctrl *ctrl, int argc,
 	return wpa_ctrl_command(ctrl, cmd);
 }
 
+static int hostapd_cli_cmd_poll_sta(struct wpa_ctrl *ctrl, int argc,
+				   char *argv[])
+{
+	char buf[64];
+	if (argc < 1) {
+		printf("Invalid 'poll_sta' command - at least one argument, STA "
+		       "address, is required.\n");
+		return -1;
+	}
+	if (argc > 1)
+		snprintf(buf, sizeof(buf), "POLL_STA %s %s", argv[0], argv[1]);
+	else
+		snprintf(buf, sizeof(buf), "POLL_STA %s", argv[0]);
+	return wpa_ctrl_command(ctrl, buf);
+}
+
 struct hostapd_cli_cmd {
 	const char *cmd;
 	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
@@ -1418,6 +1434,7 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	{ "sta_policy_add", hostapd_cli_cmd_sta_policy_add },
 	{ "sta_policy_del", hostapd_cli_cmd_sta_policy_del },
 	{ "sta_policy_get", hostapd_cli_cmd_sta_policy_get },
+	{ "poll_sta", hostapd_cli_cmd_poll_sta},
 	{ NULL, NULL }
 };
 
