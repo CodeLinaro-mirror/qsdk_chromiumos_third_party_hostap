@@ -1940,13 +1940,13 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	}
 
 	if (cur_est > sel_est + 5000) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
+		wpa_dbg(wpa_s, MSG_INFO,
 			"Skip roam - Current BSS has better estimated throughput");
 		return 0;
 	}
 
 	if (cur_snr > GREAT_SNR) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
+		wpa_dbg(wpa_s, MSG_INFO,
 			"Skip roam - Current BSS has good SNR (%u > %u)",
 			cur_snr, GREAT_SNR);
 		return 0;
@@ -1991,7 +1991,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 			diff, min_diff);
 		ret = 0;
 	} else {
-		wpa_dbg(wpa_s, MSG_DEBUG,
+		wpa_dbg(wpa_s, MSG_INFO,
 			"Allow reassociation due to difference in signal level (%d >= %d)",
 			diff, min_diff);
 		ret = 1;
