@@ -30,6 +30,13 @@ static inline void wpa_drv_deinit(struct wpa_supplicant *wpa_s)
 		wpa_s->driver->deinit(wpa_s->drv_priv);
 }
 
+static inline int wpa_drv_enable_map(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->driver->enable_map)
+		return wpa_s->driver->enable_map(wpa_s->drv_priv);
+	return -1;
+}
+
 static inline int wpa_drv_set_param(struct wpa_supplicant *wpa_s,
 				    const char *param)
 {

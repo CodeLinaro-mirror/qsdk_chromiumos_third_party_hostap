@@ -1302,6 +1302,11 @@ struct wpa_config {
 	 * interface.
 	 */
 	int fst_llt;
+
+	/**
+	 * map_enabled - Enable Multi-AP functionality
+	 */
+	int map_enabled;
 };
 
 

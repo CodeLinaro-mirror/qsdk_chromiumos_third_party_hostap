@@ -4724,6 +4724,12 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 	}
 #endif /* CONFIG_P2P */
 
+	if (wpa_s->conf->map_enabled)
+		if (wpa_drv_enable_map(wpa_s)) {
+			wpa_printf(MSG_INFO, "failed to enabled Multi-AP\n");
+			return NULL;
+		}
+
 	return wpa_s;
 }
 

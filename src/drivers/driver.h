@@ -3499,6 +3499,13 @@ struct wpa_driver_ops {
 	 * on. Local device is assuming P2P Client role.
 	 */
 	int (*set_prob_oper_freq)(void *priv, unsigned int freq);
+
+	/**
+	 * enable_map - Enable Multi-AP functionality
+	 * @priv: Private driver interface data
+	 */
+	int (*enable_map) (void *priv);
+
 };
 
 

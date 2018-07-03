@@ -8993,6 +8993,27 @@ static int nl80211_set_prob_oper_freq(void *priv, unsigned int freq)
 	return 0;
 }
 
+static int nl80211_enable_map(void *priv)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	int ret = -ENOBUFS;
+
+	msg = nl80211_cmd_msg(drv->first_bss, 0, NL80211_CMD_SET_INTERFACE);
+	if (!msg || nla_put_u8(msg, NL80211_ATTR_MAP, 1))
+		goto fail;
+
+	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	msg = NULL;
+	if (!ret)
+		return 0;
+fail:
+	nlmsg_free(msg);
+	wpa_printf(MSG_DEBUG, "nl80211: Failed to enable Multi-AP");
+
+	return ret;
+}
 
 const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.name = "nl80211",
@@ -9106,4 +9127,5 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.set_band = nl80211_set_band,
 	.get_pref_freq_list = nl80211_get_pref_freq_list,
 	.set_prob_oper_freq = nl80211_set_prob_oper_freq,
+	.enable_map = nl80211_enable_map,
 };
