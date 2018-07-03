@@ -168,7 +168,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	/* just in case */
 	ap_sta_set_authorized(hapd, sta, 0);
 
-	if (sta->flags & WLAN_STA_WDS)
+	if (sta->flags & WLAN_STA_WDS || sta->flags & WLAN_STA_MAP)
 		hostapd_set_wds_sta(hapd, NULL, sta->addr, sta->aid, 0);
 
 	if (sta->ipaddr)
@@ -365,7 +365,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
 	unsigned long next_time = 0;
 	int reason;
 
-	wpa_printf(MSG_DEBUG, "%s: " MACSTR " flags=0x%x timeout_next=%d",
+	wpa_printf(MSG_DEBUG, "%s: " MACSTR " flags=0x%lx timeout_next=%d",
 		   __func__, MAC2STR(sta->addr), sta->flags,
 		   sta->timeout_next);
 	if (sta->timeout_next == STA_REMOVE) {

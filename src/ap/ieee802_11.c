@@ -52,6 +52,27 @@
 #include "connect_log.h"
 
 
+u8 * hostapd_eid_map(struct hostapd_data *hapd, u8 *eid)
+{
+	u8 *pos = eid;
+	struct map_information_element *map =
+		(struct map_information_element *) (pos + 2);
+
+	eid[0] = WLAN_EID_VENDOR_SPECIFIC;
+	eid[1] = 7; /* len */
+	map->oui[0] = 0x50; /* Wi-Fi Alliance specific OUI 50-6F-9A */
+	map->oui[1] = 0x6F;
+	map->oui[2] = 0x9A;
+	map->oui_type = MAP_OUI_TYPE;
+	map->sub_elem_id = MAP_SUB_ELEM_TYPE;
+	map->sub_elem_len = 0x1;
+	map->sub_elem_val = BACKHAUL_BSS | FRONTHAUL_BSS;
+
+	pos = (u8 *) (map + 1);
+
+	return pos;
+}
+
 u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
 {
 	u8 *pos = eid;
@@ -1391,6 +1412,22 @@ static u16 check_wmm(struct hostapd_data *hapd, struct sta_info *sta,
 	return WLAN_STATUS_SUCCESS;
 }
 
+static u16 hostapd_validate_map_ie(struct hostapd_data *hapd, struct sta_info *sta,
+		const u8 *map_ie, size_t map_ie_len)
+{
+	sta->flags &= ~WLAN_STA_MAP;
+
+	if(map_ie) {
+		struct map_information_element *map =
+			(struct map_information_element *)map_ie;
+
+		if (map->sub_elem_id != MAP_SUB_ELEM_TYPE)
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
+		sta->flags |= WLAN_STA_MAP;
+
+	}
+	return WLAN_STATUS_SUCCESS;
+}
 
 static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
 			   struct ieee802_11_elems *elems)
@@ -1495,6 +1532,12 @@ static u16 check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	resp = copy_supp_rates(hapd, sta, &elems);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
+	if (hapd->conf->map_enabled) {
+		resp = hostapd_validate_map_ie(hapd, sta, elems.map, elems.map_len);
+		if (resp != WLAN_STATUS_SUCCESS)
+			return resp;
+	}
+
 #ifdef CONFIG_IEEE80211N
 	resp = copy_sta_ht_capab(hapd, sta, elems.ht_capabilities);
 	if (resp != WLAN_STATUS_SUCCESS) {
@@ -1919,6 +1962,9 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_WPS */
 
+	if (hapd->conf->map_enabled)
+		p = hostapd_eid_map(hapd, p);
+
 #ifdef CONFIG_P2P
 	if (sta->p2p_ie) {
 		struct wpabuf *p2p_resp_ie;
@@ -2051,7 +2097,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_INFO, "Station tried to "
 			       "associate before authentication "
-			       "(aid=%d flags=0x%x)",
+			       "(aid=%d flags=0x%lx)",
 			       sta ? sta->aid : -1,
 			       sta ? sta->flags : 0);
 		send_deauth(hapd, mgmt->sa,
@@ -2887,6 +2933,16 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 		/* VLAN ID already set (e.g., by PMKSA caching), so bind STA */
 		if (ap_sta_bind_vlan(hapd, sta) < 0)
 			return;
+	}
+
+	if (sta->flags & WLAN_STA_MAP) {
+		int ret;
+		char ifname_wds[IFNAMSIZ + 1];
+
+		ret = hostapd_set_wds_sta(hapd, ifname_wds, sta->addr,
+					  sta->aid, 1);
+		if (!ret)
+			hostapd_set_wds_encryption(hapd, sta, ifname_wds);
 	}
 
 	hostapd_set_sta_flags(hapd, sta);

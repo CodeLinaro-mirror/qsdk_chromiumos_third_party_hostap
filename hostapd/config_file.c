@@ -3409,6 +3409,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				WLAN_RRM_CAPS_BEACON_REPORT_TABLE;
 	} else if (os_strcmp(buf, "disable_40mhz_scan") == 0) {
 		conf->disable_40mhz_scan = atoi(pos);
+	} else if (os_strcmp(buf, "map_enabled") == 0) {
+		bss->map_enabled = atoi(pos);
 	} else {
 		wpa_printf(MSG_ERROR,
 			   "Line %d: unknown configuration item '%s'",

@@ -967,6 +967,27 @@ struct ieee80211_ampe_ie {
 #define HS20_IE_VENDOR_TYPE 0x506f9a10
 #define OSEN_IE_VENDOR_TYPE 0x506f9a12
 
+#define MAP_OUI_TYPE 0x1B
+#define MAP_SUB_ELEM_TYPE 0x06
+#define BACKHAUL_BSS 0x40
+#define FRONTHAUL_BSS 0x20
+
+/*MAP Information Element (used in (Re)Association Request frames)
+ */
+struct map_information_element {
+	/* Element ID: 221 (0xdd); Length: 7 */
+	u8 oui[3]; /* 50:6F:9A */
+	u8 oui_type; /* 0x1B */
+	u8 sub_elem_id; /* 0x06 */
+	u8 sub_elem_len; /* 1 */
+	u8 sub_elem_val; /* BIT(7):Backhaul STA
+			  * BIT(6):Backhaul BSS
+			  * BIT(5):Fronthaul BSS
+			  * BIT(3) to BIT(0) reserved
+			  */
+
+} STRUCT_PACKED;
+
 #define WMM_OUI_TYPE 2
 #define WMM_OUI_SUBTYPE_INFORMATION_ELEMENT 0
 #define WMM_OUI_SUBTYPE_PARAMETER_ELEMENT 1

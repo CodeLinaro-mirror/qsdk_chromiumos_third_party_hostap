@@ -62,6 +62,7 @@ struct ieee802_11_elems {
 	const u8 *google_debug_dialog_token;
 	const u8 *google_mesh_group_privacy_mode;
 	const u8 *rrm_enabled;
+	const u8 *map;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -95,6 +96,7 @@ struct ieee802_11_elems {
 	u8 google_mesh_group_privacy_mode_len;
 	u8 rrm_enabled_len;
 	struct mb_ies_info mb_ies;
+	u8 map_len;
 };
 
 typedef enum { ParseOK = 0, ParseUnknown = 1, ParseFailed = -1 } ParseRes;

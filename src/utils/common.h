@@ -408,6 +408,7 @@ void perror(const char *s);
 
 #ifndef BIT
 #define BIT(x) (1U << (x))
+#define BIT_ULL(x) (1ULL << (x))
 #endif
 
 /*
