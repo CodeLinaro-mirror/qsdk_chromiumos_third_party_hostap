@@ -9,6 +9,7 @@ import logging
 logger = logging.getLogger()
 import subprocess
 import time
+import shutil
 import struct
 import sys
 
@@ -5455,6 +5456,8 @@ def test_dbus_introspect(dev, apdev):
             raise Exception("Unexpected Introspect response")
 
 def run_busctl(service, obj):
+    if not shutil.which("busctl"):
+        raise HwsimSkip("No busctl available")
     logger.info("busctl introspect %s %s" % (service, obj))
     cmd = subprocess.Popen(['busctl', 'introspect', service, obj],
                            stdout=subprocess.PIPE,
