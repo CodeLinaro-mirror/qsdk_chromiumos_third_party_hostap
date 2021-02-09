@@ -5286,6 +5286,15 @@ static int wpa_supplicant_ctrl_iface_roam(struct wpa_supplicant *wpa_s,
 	wpa_s->reassociate = 1;
 	wpa_supplicant_connect(wpa_s, bss, ssid);
 
+	/*
+	 * Indicate that an explicitly requested roam is in progress so scan
+	 * results that come in before the 'sme-connect' radio work gets
+	 * executed do not override the original connection attempt.
+	 */
+	if (radio_work_pending(wpa_s, "sme-connect")) {
+		wpa_s->roam_in_progress = 1;
+	}
+
 	return 0;
 #endif /* CONFIG_NO_SCAN_PROCESSING */
 }
