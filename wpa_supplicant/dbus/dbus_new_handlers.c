@@ -1896,6 +1896,7 @@ DBusMessage * wpas_dbus_handler_roam(DBusMessage *message,
 	struct wpa_bss *bss;
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
 	char *addr;
+	struct wpa_radio_work *already_connecting;
 
 	if (!dbus_message_get_args(message, NULL, DBUS_TYPE_STRING, &addr,
 				   DBUS_TYPE_INVALID)) {
@@ -1922,6 +1923,7 @@ DBusMessage * wpas_dbus_handler_roam(DBusMessage *message,
 			message, "Target BSS not found");
 	}
 
+	already_connecting = radio_work_pending(wpa_s, "sme-connect");
 	wpa_s->reassociate = 1;
 	wpa_supplicant_connect(wpa_s, bss, ssid);
 
@@ -1930,7 +1932,7 @@ DBusMessage * wpas_dbus_handler_roam(DBusMessage *message,
 	 * results that come in before the 'sme-connect' radio work gets
 	 * executed do not override the original connection attempt.
 	 */
-	if (radio_work_pending(wpa_s, "sme-connect")) {
+	if (!already_connecting && radio_work_pending(wpa_s, "sme-connect")) {
 		wpa_s->roam_in_progress = 1;
 	}
 

@@ -5256,6 +5256,7 @@ static int wpa_supplicant_ctrl_iface_roam(struct wpa_supplicant *wpa_s,
 	u8 bssid[ETH_ALEN];
 	struct wpa_bss *bss;
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	struct wpa_radio_work *already_connecting;
 
 	if (hwaddr_aton(addr, bssid)) {
 		wpa_printf(MSG_DEBUG, "CTRL_IFACE ROAM: invalid "
@@ -5283,6 +5284,7 @@ static int wpa_supplicant_ctrl_iface_roam(struct wpa_supplicant *wpa_s,
 	 * allow roaming to other networks
 	 */
 
+	already_connecting = radio_work_pending(wpa_s, "sme-connect");
 	wpa_s->reassociate = 1;
 	wpa_supplicant_connect(wpa_s, bss, ssid);
 
@@ -5291,7 +5293,7 @@ static int wpa_supplicant_ctrl_iface_roam(struct wpa_supplicant *wpa_s,
 	 * results that come in before the 'sme-connect' radio work gets
 	 * executed do not override the original connection attempt.
 	 */
-	if (radio_work_pending(wpa_s, "sme-connect")) {
+	if (!already_connecting && radio_work_pending(wpa_s, "sme-connect")) {
 		wpa_s->roam_in_progress = 1;
 	}
 
