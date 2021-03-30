@@ -43,7 +43,8 @@ void wpa_supplicant_notify_scanning(struct wpa_supplicant *wpa_s,
 				    int scanning);
 struct wpa_driver_scan_params;
 int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
-				struct wpa_driver_scan_params *params);
+				struct wpa_driver_scan_params *params,
+				bool default_ies);
 struct wpa_scan_results *
 wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
 				struct scan_info *info, int new_scan);
@@ -86,5 +87,6 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			      const u8 *ies, size_t ies_len, int rate,
 			      int snr);
 void wpa_supplicant_set_default_scan_ies(struct wpa_supplicant *wpa_s);
+struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s);
 
 #endif /* SCAN_H */
