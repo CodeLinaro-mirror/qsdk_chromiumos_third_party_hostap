@@ -603,9 +603,53 @@ size_t printf_decode(u8 *buf, size_t maxlen, const char *str)
 	return len;
 }
 
+#include "crypto/crypto.h"
+#include "crypto/sha1.h"
+#define WPA_SHA1_TXT_MAX_LEN (12 + 1) /* Intentionally only provide 6 octets */
 
 /**
- * wpa_ssid_txt - Convert SSID to a printable string
+ * wpa_sha1_txt - Convert binary data to a printable hash
+ * @data: Buffer containing the input data to be hashed
+ * @data_len:  Length of the input data in octets
+ * @output: Buffer to store the output string
+ * @output_len: Length of the output buffer in octets
+ * Returns: Pointer to the output buffer containing a printable string
+ *
+ * An internal IV is generated once and is used to pepper the hash.
+ */
+static const char * wpa_sha1_txt(const u8 *data, size_t data_len,
+				 char *output, size_t output_len)
+{
+	static int iv_initialized;
+	static u8 iv[SHA1_MAC_LEN];
+
+	size_t iv_len = sizeof(iv);
+	const u8 *sha1_vector_addr[] = { iv, data };
+	size_t sha1_vector_len[] = { iv_len, data_len };
+	u8 hash[SHA1_MAC_LEN];
+
+	if (!iv_initialized) {
+		if (os_get_random(iv, iv_len) < 0) {
+			wpa_printf(MSG_WARNING, "Failed to initialize IV");
+		} else {
+			iv_initialized = 1;
+		}
+	}
+
+	/* Hash the SSID and on success use it. */
+	if (iv_initialized &&
+	    sha1_vector(ARRAY_SIZE(sha1_vector_addr), sha1_vector_addr,
+			sha1_vector_len, hash) == 0) {
+		wpa_snprintf_hex(output, output_len, hash, sizeof(hash));
+	} else {
+		os_strlcpy(output, "UNAVAILABLE", output_len);
+	}
+	return output;
+}
+
+
+/**
+ * wpa_ctrl_ssid_txt - Convert SSID to a printable string
  * @ssid: SSID (32-octet string)
  * @ssid_len: Length of ssid in octets
  * Returns: Pointer to a printable string
@@ -613,6 +657,32 @@ size_t printf_decode(u8 *buf, size_t maxlen, const char *str)
  * This function can be used to convert SSIDs into printable form. In most
  * cases, SSIDs do not use unprintable characters, but IEEE 802.11 standard
  * does not limit the used character set, so anything could be used in an SSID.
+ *
+ * This function uses a static buffer, so only one call can be used at the
+ * time, i.e., this is not re-entrant and the returned buffer must be used
+ * before calling this again.
+ */
+const char * wpa_ctrl_ssid_txt(const u8 *ssid, size_t ssid_len)
+{
+	static char ssid_txt[SSID_MAX_LEN * 4 + 1];
+
+	if (ssid == NULL) {
+		ssid_txt[0] = '\0';
+		return ssid_txt;
+	}
+
+	printf_encode(ssid_txt, sizeof(ssid_txt), ssid, ssid_len);
+	return ssid_txt;
+}
+
+/**
+ * wpa_ssid_txt - Hash and convert SSID to a printable string
+ * @ssid: SSID (32-octet string)
+ * @ssid_len: Length of ssid in octets
+ * Returns: Pointer to a printable string
+ *
+ * This function can be used to hash and convert SSIDs into printable form that
+ * does not reveal the actual value of the SSID.
  *
  * This function uses a static buffer, so only one call can be used at the
  * time, i.e., this is not re-entrant and the returned buffer must be used
@@ -627,8 +697,8 @@ const char * wpa_ssid_txt(const u8 *ssid, size_t ssid_len)
 		return ssid_txt;
 	}
 
-	printf_encode(ssid_txt, sizeof(ssid_txt), ssid, ssid_len);
-	return ssid_txt;
+	/* Intentionally only provide 6 octets */
+	return wpa_sha1_txt(ssid, ssid_len, ssid_txt, WPA_SHA1_TXT_MAX_LEN);
 }
 
 
