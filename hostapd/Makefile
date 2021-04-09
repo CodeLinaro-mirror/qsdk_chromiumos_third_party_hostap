@@ -156,6 +156,7 @@ OBJS_c += ../src/utils/common.o
 OBJS += ../src/utils/wpa_debug.o
 OBJS_c += ../src/utils/wpa_debug.o
 OBJS += ../src/utils/wpabuf.o
+OBJS_c += ../src/utils/wpabuf.o
 OBJS += ../src/utils/os_$(CONFIG_OS).o
 OBJS += ../src/utils/ip_addr.o
 
@@ -720,6 +721,7 @@ OBJS += ../src/crypto/tls_openssl_ocsp.o
 LIBS += -lssl
 endif
 OBJS += ../src/crypto/crypto_openssl.o
+OBJS_c += ../src/crypto/crypto_openssl.o
 HOBJS += ../src/crypto/crypto_openssl.o
 ifdef NEED_FIPS186_2_PRF
 OBJS += ../src/crypto/fips_prf_openssl.o
@@ -727,6 +729,7 @@ endif
 NEED_SHA256=y
 NEED_TLS_PRF_SHA256=y
 LIBS += -lcrypto
+LIBS_c += -lcrypto
 LIBS_h += -lcrypto
 LIBS_n += -lcrypto
 ifdef CONFIG_TLS_ADD_DL
