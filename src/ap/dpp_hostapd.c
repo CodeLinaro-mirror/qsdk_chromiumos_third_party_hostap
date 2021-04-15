@@ -612,12 +612,9 @@ static void hostapd_dpp_handle_config_obj(struct hostapd_data *hapd,
 	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONF_RECEIVED);
 	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONFOBJ_AKM "%s",
 		dpp_akm_str(auth->akm));
-	if (auth->ssid_len) {
-		wpa_printf(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
-			   wpa_ssid_txt(auth->ssid, auth->ssid_len));
-		wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
-			     wpa_ctrl_ssid_txt(auth->ssid, auth->ssid_len));
-        }
+	if (auth->ssid_len)
+		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
+			wpa_ssid_txt(auth->ssid, auth->ssid_len));
 	if (auth->connector) {
 		/* TODO: Save the Connector and consider using a command
 		 * to fetch the value instead of sending an event with

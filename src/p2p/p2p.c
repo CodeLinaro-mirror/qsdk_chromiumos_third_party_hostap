@@ -4323,8 +4323,8 @@ int p2p_get_peer_info_txt(const struct p2p_peer_info *info,
 	if (dev->oper_ssid_len) {
 		res = os_snprintf(pos, end - pos,
 				  "oper_ssid=%s\n",
-				  wpa_ctrl_ssid_txt(dev->oper_ssid,
-						    dev->oper_ssid_len));
+				  wpa_ssid_txt(dev->oper_ssid,
+					       dev->oper_ssid_len));
 		if (os_snprintf_error(end - pos, res))
 			return pos - buf;
 		pos += res;

@@ -115,8 +115,8 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 		     new_state,
 		     MAC2STR(wpa_s->bssid),
 		     wpa_s->current_ssid && wpa_s->current_ssid->ssid ?
-		     wpa_ctrl_ssid_txt(wpa_s->current_ssid->ssid,
-				       wpa_s->current_ssid->ssid_len) : "");
+		     wpa_ssid_txt(wpa_s->current_ssid->ssid,
+				  wpa_s->current_ssid->ssid_len) : "");
 #endif /* ANDROID */
 }
 

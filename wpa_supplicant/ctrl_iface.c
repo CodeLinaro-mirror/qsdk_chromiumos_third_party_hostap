@@ -2073,7 +2073,7 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 				_ssid = ssid_buf;
 			}
 			ret = os_snprintf(pos, end - pos, "ssid=%s\nid=%d\n",
-					  wpa_ctrl_ssid_txt(_ssid, ssid_len),
+					  wpa_ssid_txt(_ssid, ssid_len),
 					  ssid->id);
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
@@ -2350,8 +2350,8 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 			     wpa_s->wpa_state,
 			     MAC2STR(wpa_s->bssid),
 			     wpa_s->current_ssid && wpa_s->current_ssid->ssid ?
-			     wpa_ctrl_ssid_txt(wpa_s->current_ssid->ssid,
-					       wpa_s->current_ssid->ssid_len) : "");
+			     wpa_ssid_txt(wpa_s->current_ssid->ssid,
+					  wpa_s->current_ssid->ssid_len) : "");
 		if (wpa_s->wpa_state == WPA_COMPLETED) {
 			struct wpa_ssid *ssid = wpa_s->current_ssid;
 			wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_CONNECTED
@@ -2533,7 +2533,7 @@ static int wpa_supplicant_ctrl_iface_list_networks(
 		prev = pos;
 		ret = os_snprintf(pos, end - pos, "%d\t%s",
 				  ssid->id,
-				  wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
+				  wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
 		if (os_snprintf_error(end - pos, ret))
 			return prev - buf;
 		pos += ret;
@@ -2949,7 +2949,7 @@ static int wpa_supplicant_ctrl_iface_scan_result(
 	}
 
 	ret = os_snprintf(pos, end - pos, "\t%s",
-			  wpa_ctrl_ssid_txt(bss->ssid, bss->ssid_len));
+			  wpa_ssid_txt(bss->ssid, bss->ssid_len));
 	if (os_snprintf_error(end - pos, ret))
 		return -1;
 	pos += ret;
@@ -4842,7 +4842,7 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 
 	if (mask & WPA_BSS_MASK_SSID) {
 		ret = os_snprintf(pos, end - pos, "ssid=%s\n",
-				  wpa_ctrl_ssid_txt(bss->ssid, bss->ssid_len));
+				  wpa_ssid_txt(bss->ssid, bss->ssid_len));
 		if (os_snprintf_error(end - pos, ret))
 			return 0;
 		pos += ret;

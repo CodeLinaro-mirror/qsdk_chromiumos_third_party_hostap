@@ -424,7 +424,7 @@ static int common_tests(void)
 	txt = wpa_ssid_txt(ssid, sizeof(ssid));
 	len = os_strlen(txt);
 	/* Verify that SSID_MAX_LEN * 4 buffer limit is enforced. */
-	if (len > SSID_MAX_LEN * 4) {
+	if (len != SSID_MAX_LEN * 4) {
 		wpa_printf(MSG_ERROR,
 			   "Unexpected wpa_ssid_txt() result with too long SSID");
 		errors++;
