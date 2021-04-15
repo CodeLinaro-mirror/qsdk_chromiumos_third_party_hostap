@@ -500,7 +500,6 @@ TCHAR * wpa_strdup_tchar(const char *str);
 void printf_encode(char *txt, size_t maxlen, const u8 *data, size_t len);
 size_t printf_decode(u8 *buf, size_t maxlen, const char *str);
 
-const char * wpa_ctrl_ssid_txt(const u8 *ssid, size_t ssid_len);
 const char * wpa_ssid_txt(const u8 *ssid, size_t ssid_len);
 
 char * wpa_config_parse_string(const char *value, size_t *len);

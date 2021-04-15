@@ -822,7 +822,7 @@ static void wpa_supplicant_wps_event_er_ap_settings(
 	wpa_msg_ctrl(wpa_s, MSG_INFO, WPS_EVENT_ER_AP_SETTINGS
 		     "uuid=%s ssid=%s auth_type=0x%04x encr_type=0x%04x "
 		     "key=%s",
-		     uuid_str, wpa_ctrl_ssid_txt(cred->ssid, cred->ssid_len),
+		     uuid_str, wpa_ssid_txt(cred->ssid, cred->ssid_len),
 		     cred->auth_type, cred->encr_type, key_str);
 }
 
