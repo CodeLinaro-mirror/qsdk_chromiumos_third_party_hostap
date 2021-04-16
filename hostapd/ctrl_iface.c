@@ -977,8 +977,8 @@ static int hostapd_ctrl_iface_get_config(struct hostapd_data *hapd,
 	ret = os_snprintf(pos, end - pos, "bssid=" MACSTR "\n"
 			  "ssid=%s\n",
 			  MAC2STR(hapd->own_addr),
-			  wpa_ssid_txt(hapd->conf->ssid.ssid,
-				       hapd->conf->ssid.ssid_len));
+			  wpa_ctrl_ssid_txt(hapd->conf->ssid.ssid,
+					    hapd->conf->ssid.ssid_len));
 	if (os_snprintf_error(end - pos, ret))
 		return pos - buf;
 	pos += ret;
@@ -1033,7 +1033,7 @@ static int hostapd_ctrl_iface_get_config(struct hostapd_data *hapd,
 		if (ssid->ssid_len) {
 			ret = os_snprintf(pos, end - pos,
 					  "multi_ap_backhaul_ssid=%s\n",
-					  wpa_ssid_txt(ssid->ssid,
+					  wpa_ctrl_ssid_txt(ssid->ssid,
 						       ssid->ssid_len));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;

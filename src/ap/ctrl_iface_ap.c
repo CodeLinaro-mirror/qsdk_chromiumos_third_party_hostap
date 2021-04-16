@@ -893,8 +893,8 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 				  (int) i, bss->conf->iface,
 				  (int) i, MAC2STR(bss->own_addr),
 				  (int) i,
-				  wpa_ssid_txt(bss->conf->ssid.ssid,
-					       bss->conf->ssid.ssid_len),
+				  wpa_ctrl_ssid_txt(bss->conf->ssid.ssid,
+						    bss->conf->ssid.ssid_len),
 				  (int) i, bss->num_sta);
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
