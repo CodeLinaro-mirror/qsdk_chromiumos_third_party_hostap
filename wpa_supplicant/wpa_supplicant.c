@@ -3537,9 +3537,12 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 #ifdef CONFIG_IEEE80211R
 		const u8 *ie, *md = NULL;
 #endif /* CONFIG_IEEE80211R */
-		wpa_msg(wpa_s, MSG_INFO, "Trying to associate with " MACSTR
-			" (SSID='%s' freq=%d MHz)", MAC2STR(bss->bssid),
-			wpa_ssid_txt(bss->ssid, bss->ssid_len), bss->freq);
+		wpa_printf(MSG_INFO, "Trying to associate with " MACSTR
+			   " (SSID='%s' freq=%d MHz)", MAC2STR(bss->bssid),
+			   wpa_ssid_txt(bss->ssid, bss->ssid_len), bss->freq);
+		wpa_msg_ctrl(wpa_s, MSG_INFO, "Trying to associate with " MACSTR
+			     " (SSID='%s' freq=%d MHz)", MAC2STR(bss->bssid),
+			     wpa_ctrl_ssid_txt(bss->ssid, bss->ssid_len), bss->freq);
 		bssid_changed = !is_zero_ether_addr(wpa_s->bssid);
 		os_memset(wpa_s->bssid, 0, ETH_ALEN);
 		os_memcpy(wpa_s->pending_bssid, bss->bssid, ETH_ALEN);
@@ -3569,8 +3572,10 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		return;
 #endif /* CONFIG_WPS */
 	} else {
-		wpa_msg(wpa_s, MSG_INFO, "Trying to associate with SSID '%s'",
-			wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+		wpa_printf(MSG_INFO, "Trying to associate with SSID '%s'",
+			   wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+		wpa_msg_ctrl(wpa_s, MSG_INFO, "Trying to associate with SSID '%s'",
+			     wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
 		if (bss)
 			os_memcpy(wpa_s->pending_bssid, bss->bssid, ETH_ALEN);
 		else
@@ -7852,10 +7857,14 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s, char *reason)
 
 	ssid->disabled_until.sec = now.sec + dur;
 
-	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_TEMP_DISABLED
-		"id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s",
-		ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
-		ssid->auth_failures, dur, reason);
+	wpa_printf(MSG_INFO, WPA_EVENT_TEMP_DISABLED
+		   "id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s",
+		   ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len),
+		   ssid->auth_failures, dur, reason);
+	wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_TEMP_DISABLED
+		     "id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s",
+		     ssid->id, wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len),
+		     ssid->auth_failures, dur, reason);
 }
 
 
@@ -7866,9 +7875,12 @@ void wpas_clear_temp_disabled(struct wpa_supplicant *wpa_s,
 		return;
 
 	if (ssid->disabled_until.sec) {
-		wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_REENABLED
-			"id=%d ssid=\"%s\"",
-			ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+		wpa_printf(MSG_INFO, WPA_EVENT_REENABLED
+			   "id=%d ssid=\"%s\"",
+			   ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+		wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_REENABLED
+			     "id=%d ssid=\"%s\"",
+			     ssid->id, wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
 	}
 	ssid->disabled_until.sec = 0;
 	ssid->disabled_until.usec = 0;

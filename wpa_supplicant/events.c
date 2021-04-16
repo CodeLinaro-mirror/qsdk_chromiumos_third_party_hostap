@@ -199,9 +199,12 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 			return 0; /* current profile still in use */
 #endif /* CONFIG_OWE */
 
-		wpa_msg(wpa_s, MSG_DEBUG,
-			"Driver-initiated BSS selection changed the SSID to %s",
-			wpa_ssid_txt(drv_ssid, drv_ssid_len));
+		wpa_printf(MSG_DEBUG,
+			   "Driver-initiated BSS selection changed the SSID to %s",
+			   wpa_ssid_txt(drv_ssid, drv_ssid_len));
+		wpa_msg_ctrl(wpa_s, MSG_DEBUG,
+			     "Driver-initiated BSS selection changed the SSID to %s",
+			     wpa_ctrl_ssid_txt(drv_ssid, drv_ssid_len));
 		/* continue selecting a new network profile */
 	}
 
@@ -1790,10 +1793,14 @@ wpa_supplicant_pick_new_network(struct wpa_supplicant *wpa_s)
 			if (ssid->mode == WPAS_MODE_IBSS &&
 			    !(ssid->key_mgmt & (WPA_KEY_MGMT_NONE |
 						WPA_KEY_MGMT_WPA_NONE))) {
-				wpa_msg(wpa_s, MSG_INFO,
-					"IBSS RSN not supported in the build - cannot use the profile for SSID '%s'",
-					wpa_ssid_txt(ssid->ssid,
-						     ssid->ssid_len));
+				wpa_printf(MSG_INFO,
+					   "IBSS RSN not supported in the build - cannot use the profile for SSID '%s'",
+					   wpa_ssid_txt(ssid->ssid,
+							ssid->ssid_len));
+				wpa_msg_ctrl(wpa_s, MSG_INFO,
+					     "IBSS RSN not supported in the build - cannot use the profile for SSID '%s'",
+					     wpa_ctrl_ssid_txt(ssid->ssid,
+							       ssid->ssid_len));
 				continue;
 			}
 #endif /* !CONFIG_IBSS_RSN */

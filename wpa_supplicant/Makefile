@@ -103,6 +103,7 @@ OBJS_p += ../src/utils/wpa_debug.o
 OBJS_p += ../src/utils/wpabuf.o
 OBJS_c = wpa_cli.o ../src/common/wpa_ctrl.o
 OBJS_c += ../src/utils/wpa_debug.o
+OBJS_c += ../src/utils/wpabuf.o
 OBJS_c += ../src/utils/common.o
 OBJS_c += ../src/common/cli.o
 OBJS += wmm_ac.o
@@ -1110,6 +1111,7 @@ LIBS += -lssl
 endif
 OBJS += ../src/crypto/crypto_openssl.o
 OBJS_p += ../src/crypto/crypto_openssl.o
+OBJS_c += ../src/crypto/crypto_openssl.o
 OBJS_priv += ../src/crypto/crypto_openssl.o
 ifdef NEED_FIPS186_2_PRF
 OBJS += ../src/crypto/fips_prf_openssl.o
@@ -1117,6 +1119,7 @@ endif
 NEED_TLS_PRF_SHA256=y
 LIBS += -lcrypto
 LIBS_p += -lcrypto
+LIBS_c += -lcrypto
 ifdef CONFIG_TLS_ADD_DL
 LIBS += -ldl
 LIBS_p += -ldl

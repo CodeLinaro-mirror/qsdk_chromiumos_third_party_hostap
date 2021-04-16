@@ -4110,7 +4110,7 @@ char * wpa_config_get_cred_no_key(struct wpa_cred *cred, const char *var)
 			e = &cred->excluded_ssid[i];
 			ret = os_snprintf(pos, end - pos, "%s%s",
 					  i > 0 ? "\n" : "",
-					  wpa_ssid_txt(e->ssid, e->ssid_len));
+					  wpa_ctrl_ssid_txt(e->ssid, e->ssid_len));
 			if (os_snprintf_error(end - pos, ret))
 				return buf;
 			pos += ret;

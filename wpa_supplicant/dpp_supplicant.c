@@ -1446,8 +1446,10 @@ static int wpas_dpp_handle_config_obj(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_AKM "%s",
 		dpp_akm_str(conf->akm));
 	if (conf->ssid_len)
-		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
-			wpa_ssid_txt(conf->ssid, conf->ssid_len));
+		wpa_printf(MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
+			   wpa_ssid_txt(conf->ssid, conf->ssid_len));
+		wpa_msg_ctrl(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
+			     wpa_ctrl_ssid_txt(conf->ssid, conf->ssid_len));
 	if (conf->ssid_charset)
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID_CHARSET "%d",
 			conf->ssid_charset);
@@ -1993,10 +1995,14 @@ static void wpas_dpp_rx_conn_status_result(struct wpa_supplicant *wpa_s,
 
 	status = dpp_conn_status_result_rx(auth, hdr, buf, len,
 					   ssid, &ssid_len, &channel_list);
-	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
-		"result=%d ssid=%s channel_list=%s",
-		status, wpa_ssid_txt(ssid, ssid_len),
-		channel_list ? channel_list : "N/A");
+	wpa_printf(MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
+		   "result=%d ssid=%s channel_list=%s",
+		   status, wpa_ssid_txt(ssid, ssid_len),
+		   channel_list ? channel_list : "N/A");
+	wpa_msg_ctrl(wpa_s, MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
+		     "result=%d ssid=%s channel_list=%s",
+		     status, wpa_ctrl_ssid_txt(ssid, ssid_len),
+		     channel_list ? channel_list : "N/A");
 	os_free(channel_list);
 	offchannel_send_action_done(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
