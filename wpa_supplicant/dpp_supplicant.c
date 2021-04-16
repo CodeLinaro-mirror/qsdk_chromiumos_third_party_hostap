@@ -950,9 +950,12 @@ static int wpas_dpp_handle_config_obj(struct wpa_supplicant *wpa_s,
 				      struct dpp_authentication *auth)
 {
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_RECEIVED);
-	if (auth->ssid_len)
-		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
-			wpa_ssid_txt(auth->ssid, auth->ssid_len));
+	if (auth->ssid_len) {
+		wpa_printf(MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
+			   wpa_ssid_txt(auth->ssid, auth->ssid_len));
+		wpa_msg_ctrl(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
+			     wpa_ctrl_ssid_txt(auth->ssid, auth->ssid_len));
+        }
 	if (auth->connector) {
 		/* TODO: Save the Connector and consider using a command
 		 * to fetch the value instead of sending an event with
