@@ -1274,7 +1274,7 @@ static void wpas_p2p_group_started(struct wpa_supplicant *wpa_s,
 		psk_txt[0] = '\0';
 
 	if (ssid)
-		ssid_txt = wpa_ssid_txt(ssid->ssid, ssid->ssid_len);
+		ssid_txt = wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len);
 	else
 		ssid_txt = "";
 
@@ -1298,7 +1298,8 @@ static void wpas_p2p_group_started(struct wpa_supplicant *wpa_s,
 			    persistent ? " [PERSISTENT]" : "", extra);
 	wpa_printf(MSG_INFO, P2P_EVENT_GROUP_STARTED
 		   "%s %s ssid=\"%s\" freq=%d go_dev_addr=" MACSTR "%s%s",
-		   wpa_s->ifname, go ? "GO" : "client", ssid_txt, freq,
+		   wpa_s->ifname, go ? "GO" : "client",
+		   ssid ? wpa_ssid_txt(ssid->ssid, ssid->ssid_len) : "", freq,
 		   MAC2STR(go_dev_addr), persistent ? " [PERSISTENT]" : "",
 		   extra);
 }

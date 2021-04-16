@@ -224,8 +224,10 @@ static int wpas_mesh_complete(struct wpa_supplicant *wpa_s)
 	params->conf.flags |= WPA_DRIVER_MESH_CONF_FLAG_HT_OP_MODE;
 	params->conf.ht_opmode = ifmsh->bss[0]->iface->ht_op_mode;
 
-	wpa_msg(wpa_s, MSG_INFO, "joining mesh %s",
-		wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+	wpa_printf(MSG_INFO, "joining mesh %s",
+		   wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+	wpa_msg_ctrl(wpa_s, MSG_INFO, "joining mesh %s",
+		     wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
 	ret = wpa_drv_join_mesh(wpa_s, params);
 	if (ret)
 		wpa_msg(wpa_s, MSG_ERROR, "mesh join error=%d", ret);
