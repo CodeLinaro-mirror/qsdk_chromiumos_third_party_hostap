@@ -26,6 +26,7 @@
 #include "../scan.h"
 #include "../autoscan.h"
 #include "../ap.h"
+#include "../interworking.h"
 #include "dbus_new_helpers.h"
 #include "dbus_new.h"
 #include "dbus_new_handlers.h"
@@ -1727,6 +1728,24 @@ out:
 	return reply;
 }
 
+DBusMessage * wpas_dbus_handler_interworking_select(DBusMessage *message,
+						    struct wpa_supplicant *wpa_s)
+{
+	int result;
+	DBusMessage *reply = NULL;
+
+	result = interworking_select(wpa_s, /*auto_select=*/0, /*freqs=*/NULL);
+	if (result < 0) {
+		wpa_printf(MSG_ERROR,
+			   "%s[dbus]: failed to start interworking selection",
+			   __func__);
+		reply = wpas_dbus_error_scan_error(
+			message,
+			"error starting interworking selection.");
+	}
+
+	return reply;
+}
 /**
  * wpas_dbus_handler_signal_poll - Request immediate signal properties
  * @message: Pointer to incoming dbus message
