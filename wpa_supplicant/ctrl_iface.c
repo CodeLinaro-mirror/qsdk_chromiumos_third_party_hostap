@@ -2717,6 +2717,26 @@ static int wpa_supplicant_ctrl_iface_mesh_peer_remove(
 	return wpas_mesh_peer_remove(wpa_s, addr);
 }
 
+
+static int wpa_supplicant_ctrl_iface_get_listen_interval(
+	struct wpa_supplicant *wpa_s, char *cmd,  char *buf, size_t buflen)
+{
+	u8 addr[ETH_ALEN];
+	int listen_interval;
+	int ret;
+
+	if (hwaddr_aton(cmd, addr) < 0)
+		return -1;
+
+	listen_interval = mesh_mpm_get_listen_interval(wpa_s, addr);
+	if(listen_interval < 0)
+		return -1;
+
+	ret = os_snprintf(buf, buflen, "%d", listen_interval);
+	return ret;
+}
+
+
 static void wpas_ap_accept_acl_clear_list(struct wpa_supplicant *wpa_s)
 {
 	struct hostapd_data *hapd = wpa_s->ifmsh->bss[0];
@@ -8364,6 +8384,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "MESH_PEER_REMOVE ", 17) == 0) {
 		if (wpa_supplicant_ctrl_iface_mesh_peer_remove(wpa_s, buf + 17))
 			reply_len = -1;
+	} else if (os_strncmp(buf, "GET_LISTEN_INTERVAL ", 20) == 0) {
+		reply_len = wpa_supplicant_ctrl_iface_get_listen_interval(
+			wpa_s, buf + 20, reply, reply_size);
 #endif /* CONFIG_MESH */
 #ifdef CONFIG_P2P
 	} else if (os_strncmp(buf, "P2P_FIND ", 9) == 0) {
