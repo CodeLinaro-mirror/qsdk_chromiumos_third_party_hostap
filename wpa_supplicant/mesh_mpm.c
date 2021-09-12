@@ -1280,3 +1280,26 @@ void mesh_mpm_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	eloop_cancel_timeout(plink_timer, ELOOP_ALL_CTX, sta);
 	eloop_cancel_timeout(mesh_auth_timer, ELOOP_ALL_CTX, sta);
 }
+
+
+int mesh_mpm_get_listen_interval(struct wpa_supplicant *wpa_s, const u8 *addr)
+{
+	struct hostapd_data *hapd;
+	struct sta_info *sta;
+	int listen_interval;
+
+	if (!wpa_s->ifmsh) {
+		wpa_msg(wpa_s, MSG_INFO, "Mesh is not prepared yet");
+		return -1;
+	}
+
+	hapd = wpa_s->ifmsh->bss[0];
+	sta = ap_get_sta(hapd, addr);
+	if (!sta) {
+		wpa_msg(wpa_s, MSG_INFO, "No such mesh peer");
+		return -1;
+	}
+
+	listen_interval = sta->listen_interval;
+	return listen_interval;
+}
