@@ -425,7 +425,7 @@ ChangeLog for wpa_supplicant
 	* add TDLS channel switch configuration
 	* add support for MAC address randomization in scans with nl80211
 	* enable HT for IBSS if supported by the driver
-	* add BSSID black and white lists (bssid_blacklist, bssid_whitelist)
+	* add BSSID ignore and accept lists (bssid_ignore, bssid_accept)
 	* add support for domain_suffix_match with GnuTLS
 	* add OCSP stapling client support with GnuTLS
 	* include peer certificate in EAP events even without a separate probe
@@ -1059,8 +1059,8 @@ ChangeLog for wpa_supplicant
 	* Add WPA_IGNORE_CONFIG_ERRORS build option to continue in case of bad
 	  config file.
 	* wext: Increase scan timeout from 5 to 10 seconds.
-	* Add blacklist command, allowing an external program to
-	  manage the BSS blacklist and display its current contents.
+	* Add bssid_ignore command, allowing an external program to
+	  manage the BSS ignore list and display its current contents.
 	* WPS:
 	  - Add wpa_cli wps_pin get command for generating random PINs. This can
 	    be used in a UI to generate a PIN without starting WPS (or P2P)
@@ -2091,7 +2091,7 @@ ChangeLog for wpa_supplicant
 	  RSN pre-authentication; previously these were disabled and
 	  pre-authentication would fail if the used authentication server
 	  requires EAP workarounds
-	* added support for blacklisting APs that fail or timeout
+	* added support for bssid_ignored APs that fail or timeout
 	  authentication in ap_scan=1 mode so that all APs are tried in cases
 	  where the ones with strongest signal level are failing authentication
 	* fixed CA certificate loading after a failed EAP-TLS/PEAP/TTLS

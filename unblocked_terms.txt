@@ -7,7 +7,6 @@
 
 # TODO(b/161915905): remove this if we successfully remove all
 # non-compatibility mentions.
-black.?list
 
 dummy
 \bhe\b
