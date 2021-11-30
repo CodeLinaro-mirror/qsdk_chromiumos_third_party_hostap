@@ -300,6 +300,9 @@ nl80211_scan_common(struct i802_bss *bss, u8 cmd,
 			NL80211_SCAN_FLAG_OCE_PROBE_REQ_DEFERRAL_SUPPRESSION;
 	}
 
+	/* scan for 6ghz colocated APs that reported by other APs */
+	scan_flags |= NL80211_SCAN_FLAG_COLOCATED_6GHZ;
+
 	if (scan_flags &&
 	    nla_put_u32(msg, NL80211_ATTR_SCAN_FLAGS, scan_flags))
 		goto fail;
