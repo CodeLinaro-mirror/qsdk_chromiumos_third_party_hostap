@@ -1727,7 +1727,6 @@ DBusMessage * wpas_dbus_handler_remove_cred(DBusMessage *message,
 	const char *op;
 	char *iface, *cred_id;
 	int id;
-	struct wpa_cred *cred;
 	int result;
 
 	dbus_message_get_args(message, NULL, DBUS_TYPE_OBJECT_PATH, &op,
@@ -1751,17 +1750,7 @@ DBusMessage * wpas_dbus_handler_remove_cred(DBusMessage *message,
 		goto out;
 	}
 
-	cred = wpa_config_get_cred(wpa_s->conf, id);
-	if (!cred) {
-		wpa_printf(MSG_ERROR,
-			   "%s[dbus]: could not find credential %s",
-			   __func__, op);
-		reply = wpas_dbus_error_invalid_args(message,
-			"could not find credentials");
-		goto out;
-	}
-
-	result = wpa_supplicant_remove_cred(wpa_s, cred);
+	result = wpa_config_remove_cred(wpa_s->conf, id);
 	if (result == -1) {
 		wpa_printf(MSG_ERROR,
 			   "%s[dbus]: error occurred when removing cred %d",
@@ -1774,33 +1763,6 @@ DBusMessage * wpas_dbus_handler_remove_cred(DBusMessage *message,
 
 out:
 	os_free(iface);
-	return reply;
-}
-
-/**
- * wpas_dbus_handler_remove_all_creds - Remove all the configured sets of
- * credentials.
- * @message: Pointer to incoming dbus message
- * @wpa_s: wpa_supplicant structure for a network interface
- * Returns: NULL indicating success or DBus error message on failure
- *
- * Handler function for "RemoveAllCreds" method call of a network interface.
- */
-DBusMessage * wpas_dbus_handler_remove_all_creds(DBusMessage *message,
-						 struct wpa_supplicant *wpa_s)
-{
-	int res;
-	DBusMessage *reply = NULL;
-
-	res = wpa_supplicant_remove_all_creds(wpa_s);
-	if (res < 0) {
-		wpa_printf(MSG_ERROR,
-			   "%s[dbus]: failed to remove all credentials",
-			   __func__);
-		reply = wpas_dbus_error_unknown_error(message,
-			"failed to remove all credentials");
-	}
-
 	return reply;
 }
 

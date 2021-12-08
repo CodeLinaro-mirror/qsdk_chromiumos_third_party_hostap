@@ -3678,12 +3678,6 @@ static const struct wpa_dbus_method_desc wpas_dbus_interface_methods[] = {
 		  END_ARGS
 	  }
 	},
-	{ "RemoveAllCreds", WPAS_DBUS_NEW_IFACE_INTERFACE,
-	  (WPADBusMethodHandler) wpas_dbus_handler_remove_all_creds,
-	  {
-		  END_ARGS
-	  }
-	},
 	{ "InterworkingSelect", WPAS_DBUS_NEW_IFACE_INTERFACE,
 	  (WPADBusMethodHandler) wpas_dbus_handler_interworking_select,
 	  {

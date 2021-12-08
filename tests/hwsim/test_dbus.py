@@ -6118,23 +6118,6 @@ def test_dbus_creds(dev, apdev):
     if not "FAIL" in dev[0].get_cred(0, 'domain'):
         raise Exception("Credential remove failed")
 
-    # Removal of multiple credentials
-    cred1 = {'domain': 'server1.w1.fi','realm': 'server1.w1.fi','eap': 'TTLS'}
-    iface.AddCred(dbus.Dictionary(cred1, signature='sv'))
-    if "FAIL" in dev[0].get_cred(0, 'domain'):
-        raise Exception("Failed to add credential")
-
-    cred2 = {'domain': 'server2.w1.fi','realm': 'server2.w1.fi','eap': 'TTLS'}
-    iface.AddCred(dbus.Dictionary(cred2, signature='sv'))
-    if "FAIL" in dev[0].get_cred(1, 'domain'):
-        raise Exception("Failed to add credential")
-
-    iface.RemoveAllCreds()
-    if not "FAIL" in dev[0].get_cred(0, 'domain'):
-        raise Exception("Credential remove failed")
-    if not "FAIL" in dev[0].get_cred(1, 'domain'):
-        raise Exception("Credential remove failed")
-
 def test_dbus_interworking(dev, apdev):
     "D-Bus interworking selection"
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
