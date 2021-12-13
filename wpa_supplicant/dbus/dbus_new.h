@@ -16,7 +16,6 @@
 struct wpa_global;
 struct wpa_supplicant;
 struct wpa_ssid;
-struct wpa_cred;
 struct wps_event_m2d;
 struct wps_event_fail;
 struct wps_credential;
@@ -96,9 +95,6 @@ enum wpas_dbus_sta_prop {
 
 #define WPAS_DBUS_NEW_P2P_PEERS_PART	"Peers"
 #define	WPAS_DBUS_NEW_IFACE_P2P_PEER WPAS_DBUS_NEW_INTERFACE ".Peer"
-
-#define WPAS_DBUS_NEW_CREDENTIALS_PART "Credentials"
-#define WPAS_DBUS_NEW_IFACE_CREDENTIAL WPAS_DBUS_NEW_INTERFACE ".Credential"
 
 /* Top-level Errors */
 #define WPAS_DBUS_ERROR_UNKNOWN_ERROR \
