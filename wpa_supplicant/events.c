@@ -4141,14 +4141,6 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
 			wpa_dbg(ifs, MSG_DEBUG,
 				"Channel list changed - restart sched_scan");
 			wpas_scan_restart_sched_scan(ifs);
-		} else {
-			/*
-			 * Look for APs in bands/channels (e.g. 6GHz) that were
-			 * previously disabled.
-			 */
-			wpa_dbg(ifs, MSG_DEBUG,
-				"Channel list changed - restart scan");
-			wpa_supplicant_req_new_scan(ifs, 0, 0);
 		}
 	}
 
