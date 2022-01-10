@@ -1696,7 +1696,7 @@ def policy_test(dev, ap, values, only_one=True):
     events = []
     while True:
         ev = dev.wait_event(["INTERWORKING-AP", "INTERWORKING-NO-MATCH",
-                             "INTERWORKING-BLACKLISTED",
+                             "INTERWORKING-EXCLUDED",
                              "INTERWORKING-SELECTED"], timeout=15)
         if ev is None:
             raise Exception("Network selection timed out")
@@ -1813,12 +1813,12 @@ def test_ap_hs20_excluded_ssid(dev, apdev):
     values = default_cred()
     values['excluded_ssid'] = "test-hs20"
     events = policy_test(dev[0], apdev[1], values)
-    ev = [e for e in events if "INTERWORKING-BLACKLISTED " + apdev[0]['bssid'] in e]
+    ev = [e for e in events if "INTERWORKING-EXCLUDED " + apdev[0]['bssid'] in e]
     if len(ev) != 1:
         raise Exception("Excluded network not reported")
     values['excluded_ssid'] = "test-hs20-other"
     events = policy_test(dev[0], apdev[0], values)
-    ev = [e for e in events if "INTERWORKING-BLACKLISTED " + apdev[1]['bssid'] in e]
+    ev = [e for e in events if "INTERWORKING-EXCLUDED " + apdev[1]['bssid'] in e]
     if len(ev) != 1:
         raise Exception("Excluded network not reported")
 
@@ -1828,7 +1828,7 @@ def test_ap_hs20_excluded_ssid(dev, apdev):
     values['phase2'] = "auth=MSCHAPV2"
     values['excluded_ssid'] = "test-hs20"
     events = policy_test(dev[0], apdev[1], values)
-    ev = [e for e in events if "INTERWORKING-BLACKLISTED " + apdev[0]['bssid'] in e]
+    ev = [e for e in events if "INTERWORKING-EXCLUDED " + apdev[0]['bssid'] in e]
     if len(ev) != 1:
         raise Exception("Excluded network not reported")
 
@@ -1836,7 +1836,7 @@ def test_ap_hs20_excluded_ssid(dev, apdev):
               'milenage': "5122250214c33e723a5dd523fc145fc0:981d464c7c52eb6e5036234984ad0bcf:000000000123",
               'excluded_ssid': "test-hs20"}
     events = policy_test(dev[0], apdev[1], values)
-    ev = [e for e in events if "INTERWORKING-BLACKLISTED " + apdev[0]['bssid'] in e]
+    ev = [e for e in events if "INTERWORKING-EXCLUDED " + apdev[0]['bssid'] in e]
     if len(ev) != 1:
         raise Exception("Excluded network not reported")
 
