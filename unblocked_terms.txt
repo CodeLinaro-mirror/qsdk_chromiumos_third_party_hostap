@@ -15,7 +15,6 @@ master
 \bnative
 \b(in)?sane(\b|\d)
 sanity
-white.?list
 
 # Non-issue: this regex is matched, but only in a non-text file:
 # wpa_supplicant/wpa_gui-qt4/icons/laptop.svg
