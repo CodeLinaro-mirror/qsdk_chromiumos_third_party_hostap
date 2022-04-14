@@ -3819,7 +3819,10 @@ retry:
 			    params->ssid))
 			goto fail;
 	}
-	wpa_hexdump(MSG_DEBUG, "  * IEs", params->ie, params->ie_len);
+
+	if (params->ie)
+		wpa_hexdump(MSG_DEBUG, "  * IEs", params->ie, params->ie_len);
+
 	if (params->ie &&
 	    nla_put(msg, NL80211_ATTR_IE, params->ie_len, params->ie))
 		goto fail;
@@ -6147,7 +6150,9 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		drv->ssid_len = params->ssid_len;
 	}
 
-	wpa_hexdump(MSG_DEBUG, "  * IEs", params->wpa_ie, params->wpa_ie_len);
+	if (params->wpa_ie)
+		wpa_hexdump(MSG_DEBUG, "  * IEs", params->wpa_ie, params->wpa_ie_len);
+
 	if (params->wpa_ie &&
 	    nla_put(msg, NL80211_ATTR_IE, params->wpa_ie_len, params->wpa_ie))
 		return -1;
