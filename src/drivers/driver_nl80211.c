@@ -3812,13 +3812,10 @@ retry:
 		if (nla_put_u32(msg, NL80211_ATTR_WIPHY_FREQ, params->freq))
 			goto fail;
 	}
-	if (params->ssid) {
-		wpa_printf(MSG_DEBUG, "  * SSID=%s",
-			   wpa_ssid_txt(params->ssid, params->ssid_len));
+	if (params->ssid)
 		if (nla_put(msg, NL80211_ATTR_SSID, params->ssid_len,
 			    params->ssid))
 			goto fail;
-	}
 
 	if (params->ie)
 		wpa_hexdump(MSG_DEBUG, "  * IEs", params->ie, params->ie_len);
@@ -5965,8 +5962,6 @@ retry:
 	    params->ssid == NULL || params->ssid_len > sizeof(drv->ssid))
 		goto fail;
 
-	wpa_printf(MSG_DEBUG, "  * SSID=%s",
-		   wpa_ssid_txt(params->ssid, params->ssid_len));
 	if (nla_put(msg, NL80211_ATTR_SSID, params->ssid_len, params->ssid))
 		goto fail;
 	os_memcpy(drv->ssid, params->ssid, params->ssid_len);
@@ -6139,8 +6134,6 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	}
 
 	if (params->ssid) {
-		wpa_printf(MSG_DEBUG, "  * SSID=%s",
-			   wpa_ssid_txt(params->ssid, params->ssid_len));
 		if (nla_put(msg, NL80211_ATTR_SSID, params->ssid_len,
 			    params->ssid))
 			return -1;
