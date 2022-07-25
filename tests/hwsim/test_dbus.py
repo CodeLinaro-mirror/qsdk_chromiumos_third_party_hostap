@@ -6097,7 +6097,7 @@ def test_dbus_creds(dev, apdev):
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
     iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
 
-    args = {'domain': 'server.w1.fi',
+    args = {'domain': ['server.w1.fi','server2.w1.fi'],
             'realm': 'server.w1.fi',
             'roaming_consortium': '50a9bf',
             'required_roaming_consortium': '23bf50',
