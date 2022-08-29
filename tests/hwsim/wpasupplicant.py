@@ -459,14 +459,18 @@ class WpaSupplicant:
             if field in params:
                 self.set_cred_quoted(id, field, params[field])
 
-        not_quoted = ["eap", "roaming_consortium", "priority",
-                      "required_roaming_consortium", "sp_priority",
-                      "max_bss_load", "update_identifier", "req_conn_capab",
+        not_quoted = ["eap", "priority", "sp_priority", "max_bss_load",
+                      "update_identifier", "req_conn_capab",
                       "min_dl_bandwidth_home", "min_ul_bandwidth_home",
                       "min_dl_bandwidth_roaming", "min_ul_bandwidth_roaming"]
         for field in not_quoted:
             if field in params:
                 self.set_cred(id, field, params[field])
+
+        as_list = ["home_ois", "required_home_ois"]
+        for field in as_list:
+            if field in params:
+                self.set_cred_quoted(id, field, ','.join(params[field]))
 
         return id
 
