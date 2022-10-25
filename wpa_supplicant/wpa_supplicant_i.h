@@ -1674,6 +1674,10 @@ static inline int wpas_mode_to_ieee80211_mode(enum wpas_mode mode)
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 
+bool wpas_is_sae_avoided(struct wpa_supplicant *wpa_s,
+			struct wpa_ssid *ssid,
+			const struct wpa_ie_data *ie);
+
 int wpas_init_ext_pw(struct wpa_supplicant *wpa_s);
 
 void dump_freq_data(struct wpa_supplicant *wpa_s, const char *title,
