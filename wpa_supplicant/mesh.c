@@ -308,7 +308,7 @@ void wpa_mesh_notify_peer(struct wpa_supplicant *wpa_s, const u8 *addr,
                                       &acct_interim_interval, &vlan_id,
                                       &psk, &identity, &radius_cui, 0);
 	if (res == HOSTAPD_ACL_REJECT) {
-		wpa_printf(MSG_ERROR, "Ignore new peer notification\n");
+		wpa_printf(MSG_EXCESSIVE, "Ignore new peer notification\n");
 		return;
 	}
 
