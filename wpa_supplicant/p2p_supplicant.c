@@ -178,7 +178,7 @@ static int wpas_p2p_num_unused_channels(struct wpa_supplicant *wpa_s)
 		return -1;
 
 	num = get_shared_radio_freqs(wpa_s, freqs,
-				     wpa_s->num_multichan_concurrent);
+				     wpa_s->num_multichan_concurrent, false);
 	os_free(freqs);
 
 	unused = wpa_s->num_multichan_concurrent - num;
@@ -205,7 +205,8 @@ wpas_p2p_valid_oper_freqs(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	num = get_shared_radio_freqs_data(wpa_s, freqs,
-					  wpa_s->num_multichan_concurrent);
+					  wpa_s->num_multichan_concurrent,
+					  false);
 
 	os_memset(p2p_freqs, 0, sizeof(struct wpa_used_freq_data) * len);
 
@@ -6373,7 +6374,8 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 		return -1;
 
 	num = get_shared_radio_freqs_data(wpa_s, freqs,
-					  wpa_s->num_multichan_concurrent);
+					  wpa_s->num_multichan_concurrent,
+					  false);
 
 	if (wpa_s->current_ssid &&
 	    wpa_s->current_ssid->mode == WPAS_MODE_P2P_GO &&
@@ -8215,7 +8217,7 @@ void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s,
 	if (!freqs)
 		return;
 
-	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num, false);
 
 	os_memset(&chan, 0, sizeof(chan));
 	os_memset(&cli_chan, 0, sizeof(cli_chan));
@@ -9764,7 +9766,7 @@ static void wpas_p2p_reconsider_moving_go(void *eloop_ctx, void *timeout_ctx)
 	if (!freqs)
 		return;
 
-	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num, false);
 
 	/* Previous attempt to move a GO was not possible -- try again. */
 	wpas_p2p_consider_moving_gos(wpa_s, freqs, num,
