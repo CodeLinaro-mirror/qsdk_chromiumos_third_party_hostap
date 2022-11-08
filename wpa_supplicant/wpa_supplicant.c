@@ -1494,10 +1494,8 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 
 	sel = ie.key_mgmt & ssid->key_mgmt;
 #ifdef CONFIG_SAE
-	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) ||
-	    wpas_is_sae_avoided(wpa_s, ssid, &ie)) {
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE))
 		sel &= ~(WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE);
-	}
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_IEEE80211R
 	if (!(wpa_s->drv_flags & (WPA_DRIVER_FLAGS_SME |
@@ -7881,16 +7879,6 @@ int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 	return ssid->ieee80211w;
 }
 
-#ifdef CONFIG_SAE
-int wpas_is_sae_avoided(struct wpa_supplicant *wpa_s,
-			struct wpa_ssid *ssid,
-			const struct wpa_ie_data *ie) {
-	return (wpa_s->conf->sae_check_mfp &&
-		(!(ie->capabilities &
-		   (WPA_CAPABILITY_MFPC | WPA_CAPABILITY_MFPR)) ||
-		 wpas_get_ssid_pmf(wpa_s, ssid) == NO_MGMT_FRAME_PROTECTION));
-}
-#endif /* CONFIG_SAE */
 
 int wpas_is_p2p_prioritized(struct wpa_supplicant *wpa_s)
 {
