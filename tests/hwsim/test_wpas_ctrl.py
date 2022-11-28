@@ -451,12 +451,8 @@ def test_wpas_ctrl_cred(dev):
         raise Exception("Unexpected success on invalid string")
 
     for i in ("11", "1122", "112233445566778899aabbccddeeff00"):
-        if "FAIL" not in dev[0].request("SET_CRED " + str(id) + " home_ois " + i):
-            raise Exception("Unexpected success on invalid home_ois")
-
-    for i in ("11", "1122", "112233445566778899aabbccddeeff00"):
-        if "FAIL" not in dev[0].request("SET_CRED " + str(id) + " required_home_ois " + i):
-            raise Exception("Unexpected success on invalid required_home_ois")
+        if "FAIL" not in dev[0].request("SET_CRED " + str(id) + " roaming_consortium " + i):
+            raise Exception("Unexpected success on invalid roaming_consortium")
 
     dev[0].set_cred(id, "excluded_ssid", "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
     if "FAIL" not in dev[0].request("SET_CRED " + str(id) + " excluded_ssid 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00"):
