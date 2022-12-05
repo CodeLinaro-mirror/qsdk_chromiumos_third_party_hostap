@@ -72,7 +72,7 @@ static int hostapd_get_sta_tx_rx(struct hostapd_data *hapd,
 	len += ret;
 
 	ret = os_snprintf(buf + len, buflen - len, "rx_rate_info=%lu",
-			  data.current_rx_rate);
+			  data.current_rx_rate / 100);
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
@@ -104,7 +104,7 @@ static int hostapd_get_sta_tx_rx(struct hostapd_data *hapd,
 		len += ret;
 
 	ret = os_snprintf(buf + len, buflen - len, "tx_rate_info=%lu",
-			  data.current_tx_rate);
+			  data.current_tx_rate / 100);
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;

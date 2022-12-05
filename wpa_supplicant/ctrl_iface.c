@@ -8013,9 +8013,9 @@ static int wpa_supplicant_signal_poll(struct wpa_supplicant *wpa_s, char *buf,
 	pos = buf;
 	end = buf + buflen;
 
-	ret = os_snprintf(pos, end - pos, "RSSI=%d\nLINKSPEED=%d\n"
+	ret = os_snprintf(pos, end - pos, "RSSI=%d\nLINKSPEED=%lu\n"
 			  "NOISE=%d\nFREQUENCY=%u\n",
-			  si.current_signal, si.current_txrate / 1000,
+			  si.data.signal, si.data.current_tx_rate / 1000,
 			  si.current_noise, si.frequency);
 	if (os_snprintf_error(end - pos, ret))
 		return -1;
@@ -8045,17 +8045,18 @@ static int wpa_supplicant_signal_poll(struct wpa_supplicant *wpa_s, char *buf,
 		pos += ret;
 	}
 
-	if (si.avg_signal) {
+	if (si.data.avg_signal) {
 		ret = os_snprintf(pos, end - pos,
-				  "AVG_RSSI=%d\n", si.avg_signal);
+				  "AVG_RSSI=%d\n", si.data.avg_signal);
 		if (os_snprintf_error(end - pos, ret))
 			return -1;
 		pos += ret;
 	}
 
-	if (si.avg_beacon_signal) {
+	if (si.data.avg_beacon_signal) {
 		ret = os_snprintf(pos, end - pos,
-				  "AVG_BEACON_RSSI=%d\n", si.avg_beacon_signal);
+				  "AVG_BEACON_RSSI=%d\n",
+				  si.data.avg_beacon_signal);
 		if (os_snprintf_error(end - pos, ret))
 			return -1;
 		pos += ret;
