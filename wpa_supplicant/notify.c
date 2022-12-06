@@ -967,3 +967,9 @@ void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s)
 }
 
 #endif /* CONFIG_INTERWORKING */
+
+
+void wpas_notify_signal_change(struct wpa_supplicant *wpa_s)
+{
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_SIGNAL_CHANGE);
+}

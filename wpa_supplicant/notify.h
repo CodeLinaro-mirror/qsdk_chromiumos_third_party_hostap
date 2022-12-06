@@ -163,5 +163,6 @@ void wpas_notify_interworking_ap_added(struct wpa_supplicant *wpa_s,
 				       const char *type, int bh, int bss_load,
 				       int conn_capab);
 void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s);
+void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
 
 #endif /* NOTIFY_H */

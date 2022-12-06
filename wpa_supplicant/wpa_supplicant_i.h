@@ -1405,6 +1405,8 @@ struct wpa_supplicant {
 	struct wpas_pasn pasn;
 	struct wpa_radio_work *pasn_auth_work;
 #endif /* CONFIG_PASN */
+
+	struct wpa_signal_info last_signal_info;
 };
 
 

@@ -2344,6 +2344,9 @@ void wpas_dbus_signal_prop_changed(struct wpa_supplicant *wpa_s,
 	case WPAS_DBUS_PROP_BSS_TM_STATUS:
 		prop = "BSSTMStatus";
 		break;
+	case WPAS_DBUS_PROP_SIGNAL_CHANGE:
+		prop = "SignalChange";
+		break;
 	default:
 		wpa_printf(MSG_ERROR, "dbus: %s: Unknown Property value %d",
 			   __func__, property);
@@ -4518,6 +4521,11 @@ static const struct wpa_dbus_property_desc wpas_dbus_p2p_peer_properties[] = {
 	},
 	{ "VSIE", WPAS_DBUS_NEW_IFACE_P2P_PEER, "ay",
 	  wpas_dbus_getter_p2p_peer_vsie,
+	  NULL,
+	  NULL
+	},
+	{ "SignalChange", WPAS_DBUS_NEW_IFACE_INTERFACE, "a{sv}",
+	  wpas_dbus_getter_signal_change,
 	  NULL,
 	  NULL
 	},
