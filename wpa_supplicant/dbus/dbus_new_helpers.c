@@ -1149,6 +1149,18 @@ int wpas_dbus_new_from_signal_information(DBusMessageIter *iter,
 	    (si->data.avg_ack_signal &&
 	     !wpa_dbus_dict_append_int32(&iter_dict, "avg-ack-rssi",
 					 si->data.avg_ack_signal)) ||
+	    (si->data.rx_guard_interval &&
+	     !wpa_dbus_dict_append_uint32(&iter_dict, "rx-guard-interval",
+					  si->data.rx_guard_interval)) ||
+	    (si->data.tx_guard_interval &&
+	     !wpa_dbus_dict_append_uint32(&iter_dict, "tx-guard-interval",
+					  si->data.tx_guard_interval)) ||
+	    (si->data.rx_dcm &&
+	     !wpa_dbus_dict_append_uint32(&iter_dict, "rx-dcm",
+					  si->data.rx_dcm)) ||
+	    (si->data.tx_dcm &&
+	     !wpa_dbus_dict_append_uint32(&iter_dict, "tx-dcm",
+					  si->data.tx_dcm)) ||
 	    !wpa_dbus_dict_close_write(&variant_iter, &iter_dict) ||
 	    !dbus_message_iter_close_container(iter, &variant_iter))
 		return -ENOMEM;
