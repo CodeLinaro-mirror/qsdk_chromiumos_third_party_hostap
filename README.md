@@ -5,7 +5,7 @@ ChromeOS.
 
 ## Build and deploy
 
-This follows standard the standard ChromeOS development flow:
+This follows the standard ChromeOS development flow:
 
 ```bash
 cros-workon-${BOARD} wpa_supplicant-cros
@@ -22,7 +22,7 @@ To restart wpa_supplicant after deploying:
 ## Testing
 
 1. If applicable, implement the appropriate shill hooks (e.g.
-   [supplicant_interface_proxy_interface.h](https://source.corp.google.com/chromeos_public/src/platform2/shill/supplicant/supplicant_interface_proxy_interface.h))
+   [supplicant_interface_proxy_interface.h](https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform2/shill/supplicant/supplicant_interface_proxy_interface.h))
    and execute the appropriate shill flow. See
    [go/shill-cheatsheet](http://go/shill-cheatsheet) for shill development tips.
 2. Use the wpa_supplicant command line interface wpa_cli:
@@ -59,7 +59,7 @@ relevant reviewers, you should send the patch upstream. For time-sensitive
 changes, we allow landing the change as **FROMLIST** with an **UPSTREAM-TASK**
 tag at the end specifying a bug number to track the task of upstreaming the
 change. For other changes, we prefer landing the change as **UPSTREAM** or
-**BACKPORT** to avoid accuring technical debt.
+**BACKPORT** to avoid accruing technical debt.
 
 ## Contributing upstream
 
