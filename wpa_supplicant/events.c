@@ -1971,6 +1971,14 @@ wpas_get_est_throughput_from_bss_snr(const struct wpa_supplicant *wpa_s,
 	return wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr, bss->freq);
 }
 
+static int wpas_evaluate_band_score(int frequency) {
+	if (is_6ghz_freq(frequency)) {
+		return 2;
+	} else if (IS_5GHZ(frequency)) {
+		return 1;
+	}
+	return 0;
+}
 
 int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 					   struct wpa_bss *current_bss,
@@ -1994,7 +2002,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	const double max_est_ratio = 2;
 
 	int min_diff, diff;
-	int to_2ghz, to_5ghz;
+	int cur_band_score, sel_band_score;
 	int cur_level, sel_level, temp_level;
 	int adjust = 0;
 	double adjust_factor, est_ratio;
@@ -2056,9 +2064,6 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 			cur_level, cur_snr, cur_est);
 	}
 
-	to_2ghz = IS_5GHZ(current_bss->freq) && !IS_5GHZ(selected->freq);
-	to_5ghz = IS_5GHZ(selected->freq) && !IS_5GHZ(current_bss->freq);
-
 	/*
 	 * At low RSSI, we ignore estimated throughput gains and only consider
 	 * RSSI gains. At higher RSSI, adjust_factor is multiplied by adjust
@@ -2098,16 +2103,15 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	min_diff += (int) (adjust * adjust_factor);
 
 	/*
-	 * Note that the bias we give to 5GHz here is independent of the
-	 * throughput gains we generally see when moving to a 5GHz AP. In other
-	 * words, we should be motivated to move to a 5GHz AP by its
-	 * significantly better estimated throughput as opposed to the fact that
-	 * it's a 5GHz AP.
-	 */
-	if (to_2ghz)
-		min_diff += 2;
-	else if (to_5ghz)
-		min_diff -= 2;
+	 * Networks of higher bands usually have lower traffic load and therefore
+	 * often provide higher throughput even for identical estimated throughputs.
+	 * We give scores 0, 1, and 2 to 2.4GHz, 5GHz and 6GHz bands respectively,
+	 * so that min_diff is smaller and it is easier to roam to networks of
+	 * higher bands.
+	*/
+	cur_band_score = wpas_evaluate_band_score(current_bss->freq);
+	sel_band_score = wpas_evaluate_band_score(selected->freq);
+	min_diff +=  (cur_band_score - sel_band_score) * 2;
 	if (wpa_s->signal_threshold && cur_level <= wpa_s->signal_threshold &&
 	    sel_level > wpa_s->signal_threshold)
 		min_diff -= 2;
