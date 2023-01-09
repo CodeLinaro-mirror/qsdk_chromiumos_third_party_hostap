@@ -13,6 +13,16 @@ emerge-${BOARD} wpa_supplicant-cros
 cros deploy ${DUT} wpa_supplicant-cros
 ```
 
+Note that when an uprev is not in progress, `wpa_supplicant-cros/current` and
+`wpa_supplicant-cros/next` point to the same branch and you can choose to
+develop on either of them. When an uprev is in progress, you should develop on
+`wpa_supplicant-cros/current` to ensure that boards see the changes you are
+making immediately, and cherry-pick all changes you've made to
+`wpa_supplicant-cros/next` to ensure that the will continue to carry those
+changes after the uprev happens. See
+[go/wpa-supplicant-cros-uprev](http://go/wpa-supplicant-cros-uprev) for our
+uprev process.
+
 To restart wpa_supplicant after deploying:
 
 ```bash
@@ -60,6 +70,14 @@ changes, we allow landing the change as **FROMLIST** with an **UPSTREAM-TASK**
 tag at the end specifying a bug number to track the task of upstreaming the
 change. For other changes, we prefer landing the change as **UPSTREAM** or
 **BACKPORT** to avoid accruing technical debt.
+
+If you've landed your change as **FROMLIST**, make sure to monitor the hostap
+mailing list so you can revise your patch if necessary. After it has been
+accepted upstream, revert the original **FROMLIST** patch and land it as
+**UPSTREAM** (or **BACKPORT**) to update the change to its latest version if
+necessary, and make sure the git history clearly reflects that the **FROMLIST**
+patch has been reverted and the **UPSTREAM** (or **BACKPORT**)  patch has
+landed in its place.
 
 ## Contributing upstream
 
