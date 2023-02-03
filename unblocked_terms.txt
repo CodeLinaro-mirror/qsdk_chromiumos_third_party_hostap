@@ -7,7 +7,6 @@
 
 # TODO(b/161915905): remove this if we successfully remove all
 # non-compatibility mentions.
-black.?list
 
 dummy
 \bhe\b
@@ -16,7 +15,6 @@ master
 \bnative
 \b(in)?sane(\b|\d)
 sanity
-white.?list
 
 # Non-issue: this regex is matched, but only in a non-text file:
 # wpa_supplicant/wpa_gui-qt4/icons/laptop.svg

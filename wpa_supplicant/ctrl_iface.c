@@ -12366,10 +12366,6 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "BSSID_IGNORE", 12) == 0) {
 		reply_len = wpa_supplicant_ctrl_iface_bssid_ignore(
 			wpa_s, buf + 12, reply, reply_size);
-	} else if (os_strncmp(buf, "BLACKLIST", 9) == 0) {
-		/* deprecated backwards compatibility alias for BSSID_IGNORE */
-		reply_len = wpa_supplicant_ctrl_iface_bssid_ignore(
-			wpa_s, buf + 9, reply, reply_size);
 	} else if (os_strncmp(buf, "LOG_LEVEL", 9) == 0) {
 		reply_len = wpa_supplicant_ctrl_iface_log_level(
 			wpa_s, buf + 9, reply, reply_size);
