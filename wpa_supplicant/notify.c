@@ -876,6 +876,11 @@ void wpas_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code)
 	wpa_msg(wpa_s, MSG_ERROR, WPA_EVENT_EAP_ERROR_CODE "%d", error_code);
 }
 
+void wpas_notify_psk_mismatch(struct wpa_supplicant *wpa_s)
+{
+	wpas_dbus_signal_psk_mismatch(wpa_s);
+}
+
 
 void wpas_notify_network_bssid_set_changed(struct wpa_supplicant *wpa_s,
 					   struct wpa_ssid *ssid)
