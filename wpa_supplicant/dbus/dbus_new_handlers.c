@@ -1703,8 +1703,8 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
 
 			if (params.freqs && params.freqs[0]) {
 				wpa_s->last_scan_req = MANUAL_SCAN_REQ;
-				if (wpa_supplicant_trigger_scan(wpa_s,
-								&params, false)) {
+				if (wpa_supplicant_trigger_scan(wpa_s, &params,
+								false, false)) {
 					reply = wpas_dbus_error_scan_error(
 						message,
 						"Scan request rejected");
@@ -1730,7 +1730,8 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
 		}
 
 		wpa_s->last_scan_req = MANUAL_SCAN_REQ;
-		if (wpa_supplicant_trigger_scan(wpa_s, &params, !custom_ies)) {
+		if (wpa_supplicant_trigger_scan(wpa_s, &params, !custom_ies,
+						false)) {
 			reply = wpas_dbus_error_scan_error(
 				message, "Scan request rejected");
 		}

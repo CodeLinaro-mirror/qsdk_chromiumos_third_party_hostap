@@ -279,6 +279,7 @@ static void wpas_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
  * @wpa_s: Pointer to wpa_supplicant data
  * @params: Scan parameters
  * @default_ies: Whether or not to use the default IEs in the probe request.
+ * @next: Whether or not to perform this scan as the next radio work.
  * Note that this will free any existing IEs set in @params, so this shouldn't
  * be set if the IEs have already been set with wpa_supplicant_extra_ies.
  * Otherwise, wpabuf_free will lead to a double-free.
@@ -286,7 +287,7 @@ static void wpas_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
  */
 int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
 				struct wpa_driver_scan_params *params,
-				bool default_ies)
+				bool default_ies, bool next)
 {
 	struct wpa_driver_scan_params *ctx;
 	struct wpabuf *ies = NULL;
@@ -314,8 +315,10 @@ int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
 		params->extra_ies = NULL;
 		params->extra_ies_len = 0;
 	}
+	wpa_s->last_scan_all_chan = !params->freqs;
+	wpa_s->last_scan_non_coloc_6ghz = params->non_coloc_6ghz;
 	if (!ctx ||
-	    radio_add_work(wpa_s, 0, "scan", 0, wpas_trigger_scan_cb, ctx) < 0)
+	    radio_add_work(wpa_s, 0, "scan", next, wpas_trigger_scan_cb, ctx) < 0)
 	{
 		wpa_scan_free_params(ctx);
 		wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_SCAN_FAILED "ret=-1");
@@ -1417,7 +1420,7 @@ scan:
 		wpas_p2p_scan_freqs(wpa_s, &params, true);
 #endif /* CONFIG_P2P */
 
-	ret = wpa_supplicant_trigger_scan(wpa_s, scan_params, false);
+	ret = wpa_supplicant_trigger_scan(wpa_s, scan_params, false, false);
 
 	if (ret && wpa_s->last_scan_req == MANUAL_SCAN_REQ && params.freqs &&
 	    !wpa_s->manual_scan_freqs) {
