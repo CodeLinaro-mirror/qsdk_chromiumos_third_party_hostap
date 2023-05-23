@@ -1525,6 +1525,7 @@ struct wpa_supplicant {
 	unsigned int enable_dscp_policy_capa:1;
 	unsigned int connection_dscp:1;
 	unsigned int wait_for_dscp_req:1;
+	bool support_6ghz;
 
 	struct wpa_signal_info last_signal_info;
 };
@@ -1912,5 +1913,6 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			    struct pasn_auth *pasn_auth);
 void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
+bool wpas_is_6ghz_supported(struct wpa_supplicant *wpa_s, bool only_enabled);
 
 #endif /* WPA_SUPPLICANT_I_H */
