@@ -2132,6 +2132,20 @@ static int wpa_scan_result_compar(const void *a, const void *b)
 		snr_b = snr_b_full = wb->level;
 	}
 
+	/*
+	 * Short-circuit scan result sorting logic to bias towards the 6GHz
+	 * band.
+	 */
+	if (snr_a && is_6ghz_freq(wa->freq) && !is_6ghz_freq(wb->freq)) {
+		if (snr_a >= GREAT_SNR) {
+			return -1;
+		}
+	} else if (snr_b && is_6ghz_freq(wb->freq) && !is_6ghz_freq(wa->freq)) {
+		if (snr_b >= GREAT_SNR) {
+			return 1;
+		}
+	}
+
 	/* If SNR is close, decide by max rate or frequency band. For cases
 	 * involving the 6 GHz band, use the throughput estimate irrespective
 	 * of the SNR difference since the LPI/VLP rules may result in

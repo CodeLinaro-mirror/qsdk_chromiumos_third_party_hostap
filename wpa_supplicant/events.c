@@ -2067,6 +2067,24 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	}
 
 	/*
+	 * Short-circuit the roaming heuristic to bias toward association on
+	 * 6GHz. Apply a 3dBm "roaming difficulty" so that natural RSSI
+	 * fluctuation don't cause ping-ponging between 6GHz and non-6GHz BSSes.
+	 */
+	if (is_6ghz_freq(current_bss->freq) && !is_6ghz_freq(selected->freq)) {
+		if (cur_snr >= GREAT_SNR - 3) {
+			wpa_dbg(wpa_s, MSG_INFO, "Skip roam - bias toward 6GHz");
+			return 0;
+		}
+	} else if (is_6ghz_freq(selected->freq) &&
+		   !is_6ghz_freq(current_bss->freq)) {
+		if (selected->snr >= GREAT_SNR + 3) {
+			wpa_dbg(wpa_s, MSG_INFO, "Allow roam - bias toward 6GHz");
+			return 1;
+		}
+	}
+
+	/*
 	 * At low RSSI, we ignore estimated throughput gains and only consider
 	 * RSSI gains. At higher RSSI, adjust_factor is multiplied by adjust
 	 * (set below according to the selected AP's estimated throughput
