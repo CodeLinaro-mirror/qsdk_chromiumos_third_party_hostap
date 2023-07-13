@@ -1594,10 +1594,10 @@ static int wpas_dbus_get_scan_channels(DBusMessage *message,
 }
 
 
-static int wpas_dbus_get_scan_allow_roam(DBusMessage *message,
-					 DBusMessageIter *var,
-					 dbus_bool_t *allow,
-					 DBusMessage **reply)
+static int wpas_dbus_get_scan_boolean(DBusMessage *message,
+				      DBusMessageIter *var,
+				      dbus_bool_t *allow,
+				      DBusMessage **reply)
 {
 	if (dbus_message_iter_get_arg_type(var) != DBUS_TYPE_BOOLEAN) {
 		wpa_printf(MSG_DEBUG, "%s[dbus]: Type must be a boolean",
@@ -1631,6 +1631,8 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
 	size_t i;
 	dbus_bool_t allow_roam = 1;
 	bool custom_ies = false;
+	dbus_bool_t non_coloc_6ghz = 0;
+	dbus_bool_t scan_6ghz_only = 0;
 
 	os_memset(&params, 0, sizeof(params));
 
@@ -1663,10 +1665,22 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
 							&params, &reply) < 0)
 				goto out;
 		} else if (os_strcmp(key, "AllowRoam") == 0) {
-			if (wpas_dbus_get_scan_allow_roam(message,
-							  &variant_iter,
-							  &allow_roam,
-							  &reply) < 0)
+			if (wpas_dbus_get_scan_boolean(message,
+						       &variant_iter,
+						       &allow_roam,
+						       &reply) < 0)
+				goto out;
+		} else if (os_strcmp(key, "NonColoc6GHz") == 0) {
+			if (wpas_dbus_get_scan_boolean(message,
+						       &variant_iter,
+						       &non_coloc_6ghz,
+						       &reply) < 0)
+				goto out;
+		} else if (os_strcmp(key, "6GHzOnly") == 0) {
+			if (wpas_dbus_get_scan_boolean(message,
+						       &variant_iter,
+						       &scan_6ghz_only,
+						       &reply) < 0)
 				goto out;
 		} else {
 			wpa_printf(MSG_DEBUG, "%s[dbus]: Unknown argument %s",
@@ -1683,6 +1697,15 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
 			   __func__);
 		reply = wpas_dbus_error_invalid_args(message, key);
 		goto out;
+	}
+
+	if (non_coloc_6ghz) {
+		params.non_coloc_6ghz = 1;
+	}
+
+	if (scan_6ghz_only && params.freqs == NULL) {
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+					true, false, false);
 	}
 
 	if (os_strcmp(type, "passive") == 0) {
