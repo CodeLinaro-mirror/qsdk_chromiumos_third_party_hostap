@@ -3445,6 +3445,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  "<BSSID> = add a BSSID to the list of temporarily ignored BSSs\n"
 	  "bssid_ignore clear = clear the list of temporarily ignored BSSIDs\n"
 	  "bssid_ignore = display the list of temporarily ignored BSSIDs" },
+	{ "blacklist", /* deprecated alias for bssid_ignore */
+	  wpa_cli_cmd_bssid_ignore, wpa_cli_complete_bss,
+	  cli_cmd_flag_none,
+	  "= deprecated alias for bssid_ignore" },
 	{ "log_level", wpa_cli_cmd_log_level, NULL,
 	  cli_cmd_flag_none,
 	  "<level> [<timestamp>] = update the log level/timestamp\n"
