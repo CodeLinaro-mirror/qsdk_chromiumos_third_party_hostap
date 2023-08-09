@@ -435,13 +435,13 @@
 #define WLAN_EID_ANTENNA_SECTOR_ID_PATTERN 190
 #define WLAN_EID_VHT_CAP 191
 #define WLAN_EID_VHT_OPERATION 192
-#define WLAN_EID_VHT_EXTENDED_BSS_LOAD 193
-#define WLAN_EID_VHT_WIDE_BW_CHSWITCH  194
+#define WLAN_EID_EXTENDED_BSS_LOAD 193
+#define WLAN_EID_WIDE_BW_CHSWITCH  194
 #define WLAN_EID_TRANSMIT_POWER_ENVELOPE 195
-#define WLAN_EID_VHT_CHANNEL_SWITCH_WRAPPER 196
-#define WLAN_EID_VHT_AID 197
-#define WLAN_EID_VHT_QUIET_CHANNEL 198
-#define WLAN_EID_VHT_OPERATING_MODE_NOTIFICATION 199
+#define WLAN_EID_CHANNEL_SWITCH_WRAPPER 196
+#define WLAN_EID_AID 197
+#define WLAN_EID_QUIET_CHANNEL 198
+#define WLAN_EID_OPERATING_MODE_NOTIFICATION 199
 #define WLAN_EID_UPSIM 200
 #define WLAN_EID_REDUCED_NEIGHBOR_REPORT 201
 #define WLAN_EID_TVHT_OPERATION 202
@@ -1959,6 +1959,42 @@ enum wnm_notification_Type {
 	WNM_NOTIF_TYPE_VENDOR_SPECIFIC = 221,
 };
 
+struct wnm_event_report_element {
+	u8 eid; /* WLAN_EID_EVENT_REPORT */
+	u8 len;
+	u8 token;
+	u8 type;
+	u8 status;
+	/* Followed by conditional fields */
+	union {
+		struct {
+			u8 tsf[8]; /* Event TSF */
+			u8 color_bitmap[8]; /* Event Report field */
+		} STRUCT_PACKED bss_color_collision;
+		struct {
+			u8 tsf[8]; /* Event TSF */
+			u8 color; /* Event Report field */
+		} STRUCT_PACKED bss_color_in_use;
+	} u;
+} STRUCT_PACKED;
+
+enum wnm_event_report_status {
+	WNM_STATUS_SUCCESSFUL = 0,
+	WNM_STATUS_REQ_FAILED = 1,
+	WNM_STATUS_REQ_REFUSED = 2,
+	WNM_STATUS_REQ_INCAPABLE = 3,
+	WNM_STATUS_FREQUENT_TRANSITION = 4,
+};
+
+enum wnm_event_report_type {
+       WNM_EVENT_TYPE_TRANSITION = 0,
+       WNM_EVENT_TYPE_RSNA = 1,
+       WNM_EVENT_TYPE_P2P_LINK = 2,
+       WNM_EVENT_TYPE_WNM_LOG = 3,
+       WNM_EVENT_TYPE_BSS_COLOR_COLLISION = 4,
+       WNM_EVENT_TYPE_BSS_COLOR_IN_USE = 5,
+};
+
 /* Channel Switch modes (802.11h) */
 #define CHAN_SWITCH_MODE_ALLOW_TX	0
 #define CHAN_SWITCH_MODE_BLOCK_TX	1
@@ -2418,6 +2454,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_COUNT(x)                      (((x) & 0xf) << 4)
 #define RNR_TBTT_INFO_COUNT_MAX                     16
 #define RNR_TBTT_INFO_LEN                           13
+#define RNR_TBTT_INFO_MLD_LEN                       16
 #define RNR_NEIGHBOR_AP_OFFSET_UNKNOWN              255
 /* Figure 9-632a - BSS Parameters subfield format */
 #define RNR_BSS_PARAM_OCT_RECOMMENDED               BIT(0)
@@ -2437,6 +2474,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define EHT_OPER_DEFAULT_PE_DURATION                   BIT(2)
 #define EHT_OPER_GROUP_ADDR_BU_INDICATION_LIMIT        BIT(3)
 #define EHT_OPER_GROUP_ADDR_BU_INDICATION_EXPONENT     (BIT(4) | BIT(5))
+#define EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE          2
 
 /* Control subfield: Channel Width subfield; see Table 9-401b */
 #define EHT_OPER_CHANNEL_WIDTH_20MHZ                   0
@@ -2569,6 +2607,7 @@ struct ieee80211_eht_capabilities {
  * STA Control field definitions of Per-STA Profile subelement in Basic
  * Multi-Link element as described in Figure 9-1002n: STA Control field format.
  */
+#define BASIC_MLE_STA_CTRL_LEN				2
 #define BASIC_MLE_STA_CTRL_LINK_ID_MASK			0x000F
 #define BASIC_MLE_STA_CTRL_COMPLETE_PROFILE		0x0010
 #define BASIC_MLE_STA_CTRL_PRES_STA_MAC			0x0020
@@ -2621,6 +2660,16 @@ struct eht_ml_basic_common_info {
 #define EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_NEG_SUPP_MSK  0x0060
 #define EHT_ML_MLD_CAPA_FREQ_SEP_FOR_STR_MASK         0x0f80
 #define EHT_ML_MLD_CAPA_AAR_SUPP                      0x1000
+
+#define EHT_PER_STA_CTRL_LINK_ID_MSK                  0x000f
+#define EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK         0x0010
+#define EHT_PER_STA_CTRL_MAC_ADDR_PRESENT_MSK         0x0020
+#define EHT_PER_STA_CTRL_BEACON_INTERVAL_PRESENT_MSK  0x0040
+#define EHT_PER_STA_CTRL_TSF_OFFSET_PRESENT_MSK       0x0080
+#define EHT_PER_STA_CTRL_DTIM_INFO_PRESENT_MSK        0x0100
+#define EHT_PER_STA_CTRL_NSTR_LINK_PAIR_PRESENT_MSK   0x0200
+#define EHT_PER_STA_CTRL_NSTR_BM_SIZE_MSK             0x0400
+#define EHT_PER_STA_CTRL_BSS_PARAM_CNT_PRESENT_MSK    0x0800
 
 /* IEEE P802.11be/D2.0, 9.4.2.312.2.4 - Per-STA Profile subelement format */
 struct ieee80211_eht_per_sta_profile {
@@ -2750,6 +2799,7 @@ enum mscs_description_subelem {
 #define FD_CAP_BSS_CHWIDTH_40				1
 #define FD_CAP_BSS_CHWIDTH_80				2
 #define FD_CAP_BSS_CHWIDTH_160_80_80			3
+#define FD_CAP_BSS_CHWIDTH_320				4
 #define FD_CAP_BSS_CHWIDTH_SHIFT			2
 
 #define FD_CAP_NSS_1					0

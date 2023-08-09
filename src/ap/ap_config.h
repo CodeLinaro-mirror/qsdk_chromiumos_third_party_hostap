@@ -284,6 +284,7 @@ struct hostapd_bss_config {
 	char bridge[IFNAMSIZ + 1];
 	char vlan_bridge[IFNAMSIZ + 1];
 	char wds_bridge[IFNAMSIZ + 1];
+	int bridge_hairpin; /* hairpin_mode on bridge members */
 
 	enum hostapd_logger_level logger_syslog_level, logger_stdout_level;
 
@@ -748,6 +749,7 @@ struct hostapd_bss_config {
 #endif /* CONFIG_FILS */
 
 	int multicast_to_unicast;
+	int bridge_multicast_to_unicast;
 
 	int broadcast_deauth;
 
@@ -845,6 +847,19 @@ struct hostapd_bss_config {
 	u32 macsec_replay_window;
 
 	/**
+	 * macsec_offload - Enable MACsec offload
+	 *
+	 * This setting applies only when MACsec is in use, i.e.,
+	 *  - macsec_policy is enabled
+	 *  - the key server has decided to enable MACsec
+	 *
+	 * 0 = MACSEC_OFFLOAD_OFF (default)
+	 * 1 = MACSEC_OFFLOAD_PHY
+	 * 2 = MACSEC_OFFLOAD_MAC
+	 */
+	int macsec_offload;
+
+	/**
 	 * macsec_port - MACsec port (in SCI)
 	 *
 	 * Port component of the SCI.
@@ -891,6 +906,9 @@ struct hostapd_bss_config {
 #endif /* CONFIG_MACSEC */
 
 #ifdef CONFIG_PASN
+	/* Whether to allow PASN-UNAUTH */
+	int pasn_noauth;
+
 #ifdef CONFIG_TESTING_OPTIONS
 	/*
 	 * Normally, KDK should be derived if and only if both sides support
@@ -919,6 +937,14 @@ struct hostapd_bss_config {
 	u8 rnr;
 	char *config_id;
 	bool xrates_supported;
+
+#ifdef CONFIG_IEEE80211BE
+	/* The AP is part of an AP MLD */
+	u8 mld_ap;
+
+	/* The MLD ID to which the AP MLD is affiliated with */
+	u8 mld_id;
+#endif /* CONFIG_IEEE80211BE */
 };
 
 /**
@@ -1141,6 +1167,8 @@ struct hostapd_config {
 	enum oper_chan_width eht_oper_chwidth;
 	u8 eht_oper_centr_freq_seg0_idx;
 	struct eht_phy_capabilities_info eht_phy_capab;
+	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
+	u8 punct_acs_threshold;
 #endif /* CONFIG_IEEE80211BE */
 
 	/* EHT enable/disable config from CHAN_SWITCH */

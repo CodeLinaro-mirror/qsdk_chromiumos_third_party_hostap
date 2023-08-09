@@ -1499,11 +1499,12 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 	} else {
 		/* Select any random available channel from the first available
 		 * operating class */
-		p2p_channel_select(&p2p->cfg->channels, NULL,
-				   &p2p->op_reg_class,
-				   &p2p->op_channel);
-		p2p_dbg(p2p, "Select random available channel %d from operating class %d as operating channel preference",
-			p2p->op_channel, p2p->op_reg_class);
+		if (p2p_channel_select(&p2p->cfg->channels, NULL,
+				       &p2p->op_reg_class,
+				       &p2p->op_channel) == 0)
+			p2p_dbg(p2p,
+				"Select random available channel %d from operating class %d as operating channel preference",
+				p2p->op_channel, p2p->op_reg_class);
 	}
 
 	p2p_copy_channels(&p2p->channels, &p2p->cfg->channels, p2p->allow_6ghz);
@@ -4105,9 +4106,11 @@ static void p2p_timeout_invite(struct p2p_data *p2p)
 		/*
 		 * Better remain on operating channel instead of listen channel
 		 * when running a group.
+		 * Wait 120 ms to let the P2P GO to send its beacon on the
+		 * intended TBTT.
 		 */
 		p2p_dbg(p2p, "Inviting in active GO role - wait on operating channel");
-		p2p_set_timeout(p2p, 0, 100000);
+		p2p_set_timeout(p2p, 0, 120000);
 		return;
 	}
 	p2p_listen_in_find(p2p, 0);

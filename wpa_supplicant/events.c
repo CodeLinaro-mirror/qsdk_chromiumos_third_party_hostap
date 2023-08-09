@@ -61,6 +61,10 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 					      bool trigger_6ghz_scan,
 					      union wpa_event_data *data);
 #endif /* CONFIG_NO_SCAN_PROCESSING */
+#ifdef CONFIG_OWE
+static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+			   const u8 **ret_ssid, size_t *ret_ssid_len);
+#endif /* CONFIG_OWE */
 
 
 int wpas_temp_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
@@ -188,6 +192,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 					union wpa_event_data *data)
 {
 	struct wpa_ssid *ssid, *old_ssid;
+	struct wpa_bss *bss;
 	u8 drv_ssid[SSID_MAX_LEN];
 	size_t drv_ssid_len;
 	int res;
@@ -211,6 +216,14 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 			return 0; /* current profile still in use */
 
 #ifdef CONFIG_OWE
+		if (wpa_s->current_bss &&
+		    !(wpa_s->current_bss->flags & WPA_BSS_OWE_TRANSITION)) {
+			const u8 *match_ssid;
+			size_t match_ssid_len;
+
+			owe_trans_ssid(wpa_s, wpa_s->current_bss,
+				       &match_ssid, &match_ssid_len);
+		}
 		if ((wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
 		    wpa_s->current_bss &&
 		    (wpa_s->current_bss->flags & WPA_BSS_OWE_TRANSITION) &&
@@ -258,6 +271,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Network configuration found for the "
 		"current AP");
+	bss = wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 	if (wpa_key_mgmt_wpa_any(ssid->key_mgmt)) {
 		u8 wpa_ie[80];
 		size_t wpa_ie_len = sizeof(wpa_ie);
@@ -267,7 +281,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 		 * driver indicated the actual values used in the
 		 * (Re)Association Request frame. */
 		skip_default_rsne = data && data->assoc_info.req_ies;
-		if (wpa_supplicant_set_suites(wpa_s, NULL, ssid,
+		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_ie, &wpa_ie_len,
 					      skip_default_rsne) < 0)
 			wpa_dbg(wpa_s, MSG_DEBUG, "Could not set WPA suites");
@@ -279,8 +293,6 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 		eapol_sm_invalidate_cached_session(wpa_s->eapol);
 	old_ssid = wpa_s->current_ssid;
 	wpa_s->current_ssid = ssid;
-
-	wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
 	wpa_supplicant_initiate_eapol(wpa_s);
@@ -398,7 +410,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
+static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
 {
 	struct wpa_ie_data ie;
 	int pmksa_set = -1;
@@ -422,6 +434,8 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
 						    NULL, NULL, 0, NULL, 0);
 		if (pmksa_set == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
+			if (authorized)
+				wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
 			break;
 		}
 	}
@@ -613,8 +627,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_WEP
 	int wep_ok;
 #endif /* CONFIG_WEP */
-	bool is_6ghz_bss_or_mld = is_6ghz_freq(bss->freq) ||
-		!is_zero_ether_addr(bss->mld_addr);
+	bool is_6ghz_bss = is_6ghz_freq(bss->freq);
 
 	ret = wpas_wps_ssid_bss_match(wpa_s, ssid, bss);
 	if (ret >= 0)
@@ -629,10 +642,10 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_WEP */
 
 	rsn_ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
-	if (is_6ghz_bss_or_mld && !rsn_ie) {
+	if (is_6ghz_bss && !rsn_ie) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
-				"   skip - 6 GHz/MLD BSS without RSNE");
+				"   skip - 6 GHz BSS without RSNE");
 		return 0;
 	}
 
@@ -650,8 +663,8 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 		if (!ie.has_group)
 			ie.group_cipher = wpa_default_rsn_cipher(bss->freq);
 
-		if (is_6ghz_bss_or_mld) {
-			/* WEP and TKIP are not allowed on 6 GHz */
+		if (is_6ghz_bss || !is_zero_ether_addr(bss->mld_addr)) {
+			/* WEP and TKIP are not allowed on 6 GHz/MLD */
 			ie.pairwise_cipher &= ~(WPA_CIPHER_WEP40 |
 						WPA_CIPHER_WEP104 |
 						WPA_CIPHER_TKIP);
@@ -701,12 +714,12 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			break;
 		}
 
-		if (is_6ghz_bss_or_mld) {
+		if (is_6ghz_bss) {
 			/* MFPC must be supported on 6 GHz */
 			if (!(ie.capabilities & WPA_CAPABILITY_MFPC)) {
 				if (debug_print)
 					wpa_dbg(wpa_s, MSG_DEBUG,
-						"   skip RSNE - 6 GHz/MLD without MFPC");
+						"   skip RSNE - 6 GHz without MFPC");
 				break;
 			}
 
@@ -746,10 +759,10 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 		return 1;
 	}
 
-	if (is_6ghz_bss_or_mld) {
+	if (is_6ghz_bss) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
-				"   skip - 6 GHz/MLD BSS without matching RSNE");
+				"   skip - 6 GHz BSS without matching RSNE");
 		return 0;
 	}
 
@@ -986,6 +999,7 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 				if (wpa_s->conf->sae_pwe ==
 				    SAE_PWE_HUNT_AND_PECK &&
 				    !ssid->sae_password_id &&
+				    !is_6ghz_freq(bss->freq) &&
 				    wpa_key_mgmt_sae(ssid->key_mgmt)) {
 					if (debug_print)
 						wpa_dbg(wpa_s, MSG_DEBUG,
@@ -1167,7 +1181,7 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 }
 
 
-static int disabled_freq(struct wpa_supplicant *wpa_s, int freq)
+int disabled_freq(struct wpa_supplicant *wpa_s, int freq)
 {
 	int i, j;
 
@@ -1826,6 +1840,7 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 			   struct wpa_bss *selected,
 			   struct wpa_ssid *ssid)
 {
+#ifdef IEEE8021X_EAPOL
 	if ((eap_is_wps_pbc_enrollee(&ssid->eap) &&
 	     wpas_wps_partner_link_overlap_detect(wpa_s)) ||
 	    wpas_wps_scan_pbc_overlap(wpa_s, selected, ssid)) {
@@ -1848,6 +1863,7 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_WPS */
 		return -1;
 	}
+#endif /* IEEE8021X_EAPOL */
 
 	wpa_msg(wpa_s, MSG_DEBUG,
 		"Considering connect request: reassociate: %d  selected: "
@@ -2789,6 +2805,26 @@ static void interworking_process_assoc_resp(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_INTERWORKING */
 
 
+static void wpa_supplicant_set_4addr_mode(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->enabled_4addr_mode) {
+		wpa_printf(MSG_DEBUG, "4addr mode already set");
+		return;
+	}
+
+	if (wpa_drv_set_4addr_mode(wpa_s, 1) < 0) {
+		wpa_msg(wpa_s, MSG_ERROR, "Failed to set 4addr mode");
+		goto fail;
+	}
+	wpa_s->enabled_4addr_mode = 1;
+	wpa_msg(wpa_s, MSG_INFO, "Successfully set 4addr mode");
+	return;
+
+fail:
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+}
+
+
 static void multi_ap_process_assoc_resp(struct wpa_supplicant *wpa_s,
 					const u8 *ies, size_t ies_len)
 {
@@ -2841,11 +2877,7 @@ static void multi_ap_set_4addr_mode(struct wpa_supplicant *wpa_s)
 		goto fail;
 	}
 
-	if (wpa_drv_set_4addr_mode(wpa_s, 1) < 0) {
-		wpa_printf(MSG_ERROR, "Failed to set 4addr mode");
-		goto fail;
-	}
-	wpa_s->enabled_4addr_mode = 1;
+	wpa_supplicant_set_4addr_mode(wpa_s);
 	return;
 
 fail:
@@ -2964,10 +2996,12 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+#ifdef CONFIG_OCV
 	if (((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
 	     (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OCV)) && ssid->ocv)
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV,
 				 !!(ie.capabilities & WPA_CAPABILITY_OCVC));
+#endif /* CONFIG_OCV */
 
 	/*
 	 * Update PMK in wpa_sm and the driver if roamed to WPA/WPA2 PSK from a
@@ -3194,6 +3228,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 				resp_elems.he_capabilities;
 			wpa_s->connection_eht = req_elems.eht_capabilities &&
 				resp_elems.eht_capabilities;
+			if (req_elems.rrm_enabled)
+				wpa_s->rrm.rrm_used = 1;
 		}
 	}
 
@@ -3217,7 +3253,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
-			wpa_find_assoc_pmkid(wpa_s);
+			wpa_find_assoc_pmkid(wpa_s,
+					     data->assoc_info.authorized);
 		}
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
@@ -3254,7 +3291,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_OWE
 	if (wpa_s->key_mgmt == WPA_KEY_MGMT_OWE &&
 	    (!bssid_known ||
-	     owe_process_assoc_resp(wpa_s->wpa, bssid,
+	     owe_process_assoc_resp(wpa_s->wpa,
+				    wpa_s->valid_links ?
+				    wpa_s->ap_mld_addr : bssid,
 				    data->assoc_info.resp_ies,
 				    data->assoc_info.resp_ies_len) < 0)) {
 		wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_UNSPECIFIED);
@@ -3629,8 +3668,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		hostapd_notif_assoc(wpa_s->ap_iface->bss[0],
 				    data->assoc_info.addr,
 				    data->assoc_info.req_ies,
-				    data->assoc_info.req_ies_len,
-				    data->assoc_info.reassoc);
+				    data->assoc_info.req_ies_len, NULL, 0,
+				    NULL, data->assoc_info.reassoc);
 		return;
 	}
 #endif /* CONFIG_AP */
@@ -3722,7 +3761,13 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 	wpas_fst_update_mb_assoc(wpa_s, data);
 
 #ifdef CONFIG_SME
-	os_memcpy(wpa_s->sme.prev_bssid, bssid, ETH_ALEN);
+	/*
+	 * Cache the current AP's BSSID (for non-MLO connection) or MLD address
+	 * (for MLO connection) as the previous BSSID for subsequent
+	 * reassociation requests handled by SME-in-wpa_supplicant.
+	 */
+	os_memcpy(wpa_s->sme.prev_bssid,
+		  wpa_s->valid_links ? wpa_s->ap_mld_addr : bssid, ETH_ALEN);
 	wpa_s->sme.prev_bssid_set = 1;
 	wpa_s->sme.last_unprot_disconnect.sec = 0;
 #endif /* CONFIG_SME */
@@ -3929,6 +3974,9 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_DPP2
 	wpa_s->dpp_pfs_fallback = 0;
 #endif /* CONFIG_DPP2 */
+
+	if (wpa_s->current_ssid && wpa_s->current_ssid->enable_4addr_mode)
+		wpa_supplicant_set_4addr_mode(wpa_s);
 }
 
 
@@ -5056,7 +5104,10 @@ static void wpa_supplicant_event_assoc_auth(struct wpa_supplicant *wpa_s,
 					       data->assoc_info.fils_pmk,
 					       data->assoc_info.fils_pmk_len,
 					       data->assoc_info.fils_pmkid,
-					       wpa_s->bssid, fils_cache_id);
+					       wpa_s->valid_links ?
+					       wpa_s->ap_mld_addr :
+					       wpa_s->bssid,
+					       fils_cache_id);
 		} else if (data->assoc_info.fils_pmkid) {
 			/* Update the current PMKSA used for this connection */
 			pmksa_cache_set_current(wpa_s->wpa,
@@ -5298,6 +5349,97 @@ static void wpas_event_unprot_beacon(struct wpa_supplicant *wpa_s,
 }
 
 
+static const char * bitmap_to_str(u8 value, char *buf)
+{
+	char *pos = buf;
+	int i, k = 0;
+
+	for (i = 7; i >= 0; i--)
+		pos[k++] = (value & BIT(i)) ? '1' : '0';
+
+	pos[8] = '\0';
+	return pos;
+}
+
+
+static void wpas_tid_link_map(struct wpa_supplicant *wpa_s,
+			      struct tid_link_map_info *info)
+{
+	char map_info[1000], *pos, *end;
+	int res, i;
+
+	pos = map_info;
+	end = pos + sizeof(map_info);
+	res = os_snprintf(map_info, sizeof(map_info), "default=%d",
+			  info->default_map);
+	if (os_snprintf_error(end - pos, res))
+		return;
+	pos += res;
+
+	if (!info->default_map) {
+		for (i = 0; i < MAX_NUM_MLD_LINKS && end > pos; i++) {
+			char uplink_map_str[9];
+			char downlink_map_str[9];
+
+			if (!(info->valid_links & BIT(i)))
+				continue;
+
+			bitmap_to_str(info->t2lmap[i].uplink, uplink_map_str);
+			bitmap_to_str(info->t2lmap[i].downlink,
+				      downlink_map_str);
+
+			res = os_snprintf(pos, end - pos,
+					  " link_id=%d up_link=%s down_link=%s",
+					  i, uplink_map_str,
+					  downlink_map_str);
+			if (os_snprintf_error(end - pos, res))
+				return;
+			pos += res;
+		}
+	}
+
+	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_T2LM_UPDATE "%s", map_info);
+}
+
+
+static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
+{
+	u8 bssid[ETH_ALEN];
+
+	if (wpa_drv_get_bssid(wpa_s, bssid) < 0) {
+		wpa_printf(MSG_ERROR, "LINK_RECONFIG: Failed to get BSSID");
+		wpa_supplicant_deauthenticate(wpa_s,
+					      WLAN_REASON_DEAUTH_LEAVING);
+		return;
+	}
+
+	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
+		os_memcpy(wpa_s->bssid, bssid, ETH_ALEN);
+		wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
+		wpas_notify_bssid_changed(wpa_s);
+	}
+
+	if (wpa_drv_get_mlo_info(wpa_s) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "LINK_RECONFIG: Failed to get MLO connection info");
+		wpa_supplicant_deauthenticate(wpa_s,
+					      WLAN_REASON_DEAUTH_LEAVING);
+		return;
+	}
+
+	if (wpa_sm_set_ml_info(wpa_s)) {
+		wpa_printf(MSG_ERROR,
+			   "LINK_RECONFIG: Failed to set MLO connection info to wpa_sm");
+		wpa_supplicant_deauthenticate(wpa_s,
+					      WLAN_REASON_DEAUTH_LEAVING);
+		return;
+	}
+
+	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_LINK_RECONFIG "valid_links=0x%x",
+		wpa_s->valid_links);
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
@@ -5396,6 +5538,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #endif /* CONFIG_TESTING_OPTIONS */
 		wpas_event_deauth(wpa_s,
 				  data ? &data->deauth_info : NULL);
+		break;
+	case EVENT_LINK_RECONFIG:
+		wpas_link_reconfig(wpa_s);
 		break;
 	case EVENT_MICHAEL_MIC_FAILURE:
 		wpa_supplicant_event_michael_mic_failure(wpa_s, data);
@@ -5685,6 +5830,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					  data->ch_switch.ch_width,
 					  data->ch_switch.cf1,
 					  data->ch_switch.cf2,
+					  data->ch_switch.punct_bitmap,
 					  1);
 		}
 #endif /* CONFIG_AP */
@@ -6201,6 +6347,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifdef CONFIG_DPP
 		wpas_dpp_tx_wait_expire(wpa_s);
 #endif /* CONFIG_DPP */
+		break;
+	case EVENT_TID_LINK_MAP:
+		if (data)
+			wpas_tid_link_map(wpa_s, &data->t2l_map_info);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

@@ -92,7 +92,7 @@ struct wpa_sm_ctx {
 			    const u8 *pkt, size_t pkt_len);
 	int (*channel_info)(void *ctx, struct wpa_channel_info *ci);
 	void (*transition_disable)(void *ctx, u8 bitmap);
-	void (*store_ptk)(void *ctx, u8 *addr, int cipher,
+	void (*store_ptk)(void *ctx, const u8 *addr, int cipher,
 			  u32 life_time, const struct wpa_ptk *ptk);
 #ifdef CONFIG_PASN
 	int (*set_ltf_keyseed)(void *ctx, const u8 *own_addr,
@@ -123,6 +123,7 @@ enum wpa_sm_conf_params {
 	WPA_PARAM_USE_EXT_KEY_ID,
 	WPA_PARAM_FT_RSNXE_USED,
 	WPA_PARAM_DPP_PFS,
+	WPA_PARAM_WMM_ENABLED,
 	WPA_PARAM_OCI_FREQ_EAPOL,
 	WPA_PARAM_OCI_FREQ_EAPOL_G2,
 	WPA_PARAM_OCI_FREQ_FT_ASSOC,

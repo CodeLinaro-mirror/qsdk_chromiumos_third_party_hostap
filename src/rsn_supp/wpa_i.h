@@ -220,6 +220,8 @@ struct wpa_sm {
 	int dpp_pfs;
 #endif /* CONFIG_DPP2 */
 	struct wpa_sm_mlo mlo;
+
+	bool wmm_enabled;
 };
 
 
@@ -477,7 +479,7 @@ static inline void wpa_sm_transition_disable(struct wpa_sm *sm, u8 bitmap)
 }
 
 static inline void wpa_sm_store_ptk(struct wpa_sm *sm,
-				    u8 *addr, int cipher,
+				    const u8 *addr, int cipher,
 				    u32 life_time, struct wpa_ptk *ptk)
 {
 	if (sm->ctx->store_ptk)

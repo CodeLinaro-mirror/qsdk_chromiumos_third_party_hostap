@@ -169,6 +169,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 #ifdef CONFIG_PASN
 	/* comeback after 10 TUs */
 	bss->pasn_comeback_after = 10;
+	bss->pasn_noauth = 1;
 #endif /* CONFIG_PASN */
 }
 
@@ -1444,6 +1445,13 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 #endif /* CONFIG_SAE_PK */
 
 #ifdef CONFIG_FILS
+	if (full_config && bss->fils_discovery_max_int &&
+	    (!conf->ieee80211ax || bss->disable_11ax)) {
+		wpa_printf(MSG_ERROR,
+			   "Currently IEEE 802.11ax support is mandatory to enable FILS discovery transmission.");
+		return -1;
+	}
+
 	if (full_config && bss->fils_discovery_max_int &&
 	    bss->unsol_bcast_probe_resp_interval) {
 		wpa_printf(MSG_ERROR,

@@ -83,6 +83,8 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 static void handle_auth(struct hostapd_data *hapd,
 			const struct ieee80211_mgmt *mgmt, size_t len,
 			int rssi, int from_queue);
+static int add_associated_sta(struct hostapd_data *hapd,
+			      struct sta_info *sta, int reassoc);
 
 
 u8 * hostapd_eid_multi_ap(struct hostapd_data *hapd, u8 *eid)
@@ -396,17 +398,38 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 	u8 *buf;
 	size_t rlen;
 	int reply_res = WLAN_STATUS_UNSPECIFIED_FAILURE;
+	const u8 *sa = hapd->own_addr;
+	struct wpabuf *ml_resp = NULL;
+
+#ifdef CONFIG_IEEE80211BE
+	/*
+	 * Once a non-AP MLD is added to the driver, the addressing should use
+	 * the MLD MAC address. Thus, use the MLD address instead of translating
+	 * the addresses.
+	 */
+	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta) {
+		sa = hapd->mld_addr;
+
+		ml_resp = hostapd_ml_auth_resp(hapd);
+		if (!ml_resp)
+			return -1;
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	rlen = IEEE80211_HDRLEN + sizeof(reply->u.auth) + ies_len;
+	if (ml_resp)
+		rlen += wpabuf_len(ml_resp);
 	buf = os_zalloc(rlen);
-	if (buf == NULL)
+	if (!buf) {
+		wpabuf_free(ml_resp);
 		return -1;
+	}
 
 	reply = (struct ieee80211_mgmt *) buf;
 	reply->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
 					    WLAN_FC_STYPE_AUTH);
 	os_memcpy(reply->da, dst, ETH_ALEN);
-	os_memcpy(reply->sa, hapd->own_addr, ETH_ALEN);
+	os_memcpy(reply->sa, sa, ETH_ALEN);
 	os_memcpy(reply->bssid, bssid, ETH_ALEN);
 
 	reply->u.auth.auth_alg = host_to_le16(auth_alg);
@@ -415,6 +438,14 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (ies && ies_len)
 		os_memcpy(reply->u.auth.variable, ies, ies_len);
+
+#ifdef CONFIG_IEEE80211BE
+	if (ml_resp)
+		os_memcpy(reply->u.auth.variable + ies_len,
+			  wpabuf_head(ml_resp), wpabuf_len(ml_resp));
+
+	wpabuf_free(ml_resp);
+#endif /* CONFIG_IEEE80211BE */
 
 	wpa_printf(MSG_DEBUG, "authentication reply: STA=" MACSTR
 		   " auth_alg=%d auth_transaction=%d resp=%d (IE len=%lu) (dbg=%s)",
@@ -573,12 +604,18 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	int use_pt = 0;
 	struct sae_pt *pt = NULL;
 	const struct sae_pk *pk = NULL;
+	const u8 *own_addr = hapd->own_addr;
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && sta->mld_info.mld_sta)
+		own_addr = hapd->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
 
 	if (sta->sae->tmp) {
 		rx_id = sta->sae->tmp->pw_id;
 		use_pt = sta->sae->h2e;
 #ifdef CONFIG_SAE_PK
-		os_memcpy(sta->sae->tmp->own_addr, hapd->own_addr, ETH_ALEN);
+		os_memcpy(sta->sae->tmp->own_addr, own_addr, ETH_ALEN);
 		os_memcpy(sta->sae->tmp->peer_addr, sta->addr, ETH_ALEN);
 #endif /* CONFIG_SAE_PK */
 	}
@@ -598,12 +635,12 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	}
 
 	if (update && use_pt &&
-	    sae_prepare_commit_pt(sta->sae, pt, hapd->own_addr, sta->addr,
+	    sae_prepare_commit_pt(sta->sae, pt, own_addr, sta->addr,
 				  NULL, pk) < 0)
 		return NULL;
 
 	if (update && !use_pt &&
-	    sae_prepare_commit(hapd->own_addr, sta->addr,
+	    sae_prepare_commit(own_addr, sta->addr,
 			       (u8 *) password, os_strlen(password),
 			       sta->sae) < 0) {
 		wpa_printf(MSG_DEBUG, "SAE: Could not pick PWE");
@@ -837,7 +874,15 @@ static void sae_sme_send_external_auth_status(struct hostapd_data *hapd,
 
 	os_memset(&params, 0, sizeof(params));
 	params.status = status;
-	params.bssid = sta->addr;
+
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta)
+		params.bssid =
+			sta->mld_info.links[sta->mld_assoc_link_id].peer_addr;
+#endif /* CONFIG_IEEE80211BE */
+	if (!params.bssid)
+		params.bssid = sta->addr;
+
 	if (status == WLAN_STATUS_SUCCESS && sta->sae &&
 	    !hapd->conf->disable_pmksa_caching)
 		params.pmkid = sta->sae->pmkid;
@@ -2527,6 +2572,7 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 	pasn->cb_ctx = hapd;
 	pasn->send_mgmt = hapd_pasn_send_mlme;
 	pasn->pasn_groups = hapd->conf->pasn_groups;
+	pasn->noauth = hapd->conf->pasn_noauth;
 	pasn->wpa_key_mgmt = hapd->conf->wpa_key_mgmt;
 	pasn->rsn_pairwise = hapd->conf->rsn_pairwise;
 	pasn->derive_kdk = hapd->iface->drv_flags2 &
@@ -2747,6 +2793,8 @@ static void handle_auth(struct hostapd_data *hapd,
 	size_t resp_ies_len = 0;
 	u16 seq_ctrl;
 	struct radius_sta rad_info;
+	const u8 *dst, *sa, *bssid;
+	bool mld_sta = false;
 
 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
 		wpa_printf(MSG_INFO, "handle_auth - too short payload (len=%lu)",
@@ -2764,6 +2812,20 @@ static void handle_auth(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
+	sa = mgmt->sa;
+#ifdef CONFIG_IEEE80211BE
+	/*
+	 * Handle MLO authentication before the station is added to hostapd and
+	 * the driver so that the station MLD MAC address would be used in both
+	 * hostapd and the driver.
+	 */
+	sa = hostapd_process_ml_auth(hapd, mgmt, len);
+	if (sa)
+		mld_sta = true;
+	else
+		sa = mgmt->sa;
+#endif /* CONFIG_IEEE80211BE */
+
 	auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
 	auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
 	status_code = le_to_host16(mgmt->u.auth.status_code);
@@ -2779,7 +2841,7 @@ static void handle_auth(struct hostapd_data *hapd,
 	wpa_printf(MSG_DEBUG, "authentication: STA=" MACSTR " auth_alg=%d "
 		   "auth_transaction=%d status_code=%d wep=%d%s "
 		   "seq_ctrl=0x%x%s%s",
-		   MAC2STR(mgmt->sa), auth_alg, auth_transaction,
+		   MAC2STR(sa), auth_alg, auth_transaction,
 		   status_code, !!(fc & WLAN_FC_ISWEP),
 		   challenge ? " challenge" : "",
 		   seq_ctrl, (fc & WLAN_FC_RETRY) ? " retry" : "",
@@ -2845,7 +2907,17 @@ static void handle_auth(struct hostapd_data *hapd,
 
 	if (os_memcmp(mgmt->sa, hapd->own_addr, ETH_ALEN) == 0) {
 		wpa_printf(MSG_INFO, "Station " MACSTR " not allowed to authenticate",
-			   MAC2STR(mgmt->sa));
+			   MAC2STR(sa));
+		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto fail;
+	}
+
+	if (mld_sta &&
+	    (os_memcmp(sa, hapd->own_addr, ETH_ALEN) == 0 ||
+	     os_memcmp(sa, hapd->mld_addr, ETH_ALEN) == 0)) {
+		wpa_printf(MSG_INFO,
+			   "Station " MACSTR " not allowed to authenticate",
+			   MAC2STR(sa));
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto fail;
 	}
@@ -2853,7 +2925,7 @@ static void handle_auth(struct hostapd_data *hapd,
 	if (hapd->conf->no_auth_if_seen_on) {
 		struct hostapd_data *other;
 
-		other = sta_track_seen_on(hapd->iface, mgmt->sa,
+		other = sta_track_seen_on(hapd->iface, sa,
 					  hapd->conf->no_auth_if_seen_on);
 		if (other) {
 			u8 *pos;
@@ -2862,7 +2934,7 @@ static void handle_auth(struct hostapd_data *hapd,
 
 			wpa_printf(MSG_DEBUG, "%s: Reject authentication from "
 				   MACSTR " since STA has been seen on %s",
-				   hapd->conf->iface, MAC2STR(mgmt->sa),
+				   hapd->conf->iface, MAC2STR(sa),
 				   hapd->conf->no_auth_if_seen_on);
 
 			resp = WLAN_STATUS_REJECTED_WITH_SUGGESTED_BSS_TRANSITION;
@@ -2905,12 +2977,12 @@ static void handle_auth(struct hostapd_data *hapd,
 		}
 	}
 
-	res = ieee802_11_allowed_address(hapd, mgmt->sa, (const u8 *) mgmt, len,
+	res = ieee802_11_allowed_address(hapd, sa, (const u8 *) mgmt, len,
 					 &rad_info);
 	if (res == HOSTAPD_ACL_REJECT) {
 		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
 			"Ignore Authentication frame from " MACSTR
-			" due to ACL reject", MAC2STR(mgmt->sa));
+			" due to ACL reject", MAC2STR(sa));
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto fail;
 	}
@@ -2920,7 +2992,7 @@ static void handle_auth(struct hostapd_data *hapd,
 #ifdef CONFIG_SAE
 	if (auth_alg == WLAN_AUTH_SAE && !from_queue &&
 	    (auth_transaction == 1 ||
-	     (auth_transaction == 2 && auth_sae_queued_addr(hapd, mgmt->sa)))) {
+	     (auth_transaction == 2 && auth_sae_queued_addr(hapd, sa)))) {
 		/* Handle SAE Authentication commit message through a queue to
 		 * provide more control for postponing the needed heavy
 		 * processing under a possible DoS attack scenario. In addition,
@@ -2933,7 +3005,7 @@ static void handle_auth(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_SAE */
 
-	sta = ap_get_sta(hapd, mgmt->sa);
+	sta = ap_get_sta(hapd, sa);
 	if (sta) {
 		sta->flags &= ~WLAN_STA_PENDING_FILS_ERP;
 		sta->ft_over_ds = 0;
@@ -2953,7 +3025,7 @@ static void handle_auth(struct hostapd_data *hapd,
 		    sta->plink_state == PLINK_BLOCKED) {
 			wpa_printf(MSG_DEBUG, "Mesh peer " MACSTR
 				   " is blocked - drop Authentication frame",
-				   MAC2STR(mgmt->sa));
+				   MAC2STR(sa));
 			return;
 		}
 #endif /* CONFIG_MESH */
@@ -2973,7 +3045,7 @@ static void handle_auth(struct hostapd_data *hapd,
 			 */
 			wpa_printf(MSG_DEBUG, "Mesh peer " MACSTR
 				   " not yet known - drop Authentication frame",
-				   MAC2STR(mgmt->sa));
+				   MAC2STR(sa));
 			/*
 			 * Save a copy of the frame so that it can be processed
 			 * if a new peer entry is added shortly after this.
@@ -2985,13 +3057,38 @@ static void handle_auth(struct hostapd_data *hapd,
 		}
 #endif /* CONFIG_MESH */
 
-		sta = ap_sta_add(hapd, mgmt->sa);
+		sta = ap_sta_add(hapd, sa);
 		if (!sta) {
 			wpa_printf(MSG_DEBUG, "ap_sta_add() failed");
 			resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 			goto fail;
 		}
 	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (auth_transaction == 1) {
+		os_memset(&sta->mld_info, 0, sizeof(sta->mld_info));
+
+		if (mld_sta) {
+			u8 link_id = hapd->mld_link_id;
+
+			sta->mld_info.mld_sta = true;
+			sta->mld_assoc_link_id = link_id;
+
+			/*
+			 * Set the MLD address as the station address and the
+			 * station addresses.
+			 */
+			os_memcpy(sta->mld_info.common_info.mld_addr, sa,
+				  ETH_ALEN);
+			os_memcpy(sta->mld_info.links[link_id].peer_addr,
+				  mgmt->sa, ETH_ALEN);
+			os_memcpy(sta->mld_info.links[link_id].local_addr,
+				  hapd->own_addr, ETH_ALEN);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	sta->last_seq_ctrl = seq_ctrl;
 	sta->last_subtype = WLAN_FC_STYPE_AUTH;
 #ifdef CONFIG_MBO
@@ -3129,7 +3226,22 @@ static void handle_auth(struct hostapd_data *hapd,
 	}
 
  fail:
-	reply_res = send_auth_reply(hapd, sta, mgmt->sa, mgmt->bssid, auth_alg,
+	dst = mgmt->sa;
+	bssid = mgmt->bssid;
+
+#ifdef CONFIG_IEEE80211BE
+	 /*
+	  * Once a non-AP MLD is added to the driver, the addressing should use
+	  * the MLD MAC address. It is the responsibility of the driver to
+	  * handle the translations.
+	  */
+	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta) {
+		dst = sta->addr;
+		bssid = hapd->mld_addr;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	reply_res = send_auth_reply(hapd, sta, dst, bssid, auth_alg,
 				    auth_alg == WLAN_AUTH_SAE ?
 				    auth_transaction : auth_transaction + 1,
 				    resp, resp_ies, resp_ies_len,
@@ -3160,6 +3272,42 @@ static u8 hostapd_max_bssid_indicator(struct hostapd_data *hapd)
 }
 
 
+static u32 hostapd_get_aid_word(struct hostapd_data *hapd,
+				struct sta_info *sta, int i)
+{
+#ifdef CONFIG_IEEE80211BE
+	u32 aid_word = 0;
+
+	/* Do not assign an AID that is in use on any of the affiliated links
+	 * when finding an AID for a non-AP MLD. */
+	if (hapd->conf->mld_ap) {
+		int j;
+
+		for (j = 0; j < MAX_NUM_MLD_LINKS; j++) {
+			struct hostapd_data *link_bss;
+
+			if (!sta->mld_info.links[j].valid)
+				continue;
+
+			link_bss = hostapd_mld_get_link_bss(hapd, j);
+			if (!link_bss) {
+				/* This shouldn't happen, just skip */
+				wpa_printf(MSG_ERROR,
+					   "MLD: Failed to get link BSS for AID");
+				continue;
+			}
+
+			aid_word |= link_bss->sta_aid[i];
+		}
+
+		return aid_word;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	return hapd->sta_aid[i];
+}
+
+
 int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int i, j = 32, aid;
@@ -3174,10 +3322,12 @@ int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
 		return -1;
 
 	for (i = 0; i < AID_WORDS; i++) {
-		if (hapd->sta_aid[i] == (u32) -1)
+		u32 aid_word = hostapd_get_aid_word(hapd, sta, i);
+
+		if (aid_word == (u32) -1)
 			continue;
 		for (j = 0; j < 32; j++) {
-			if (!(hapd->sta_aid[i] & BIT(j)))
+			if (!(aid_word & BIT(j)))
 				break;
 		}
 		if (j < 32)
@@ -3547,7 +3697,8 @@ u16 owe_validate_request(struct hostapd_data *hapd, const u8 *peer,
 u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 		       struct sta_info *sta,
 		       const u8 *rsn_ie, size_t rsn_ie_len,
-		       const u8 *owe_dh, size_t owe_dh_len)
+		       const u8 *owe_dh, size_t owe_dh_len,
+		       const u8 *link_addr)
 {
 	u16 status;
 	u8 *owe_buf, ie[256 * 2];
@@ -3569,6 +3720,11 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto end;
 	}
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta)
+		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld_addr,
+				     sta->mld_assoc_link_id, &sta->mld_info);
+#endif /* CONFIG_IEEE80211BE */
 	rsn_ie -= 2;
 	rsn_ie_len += 2;
 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
@@ -3613,8 +3769,9 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 end:
 	wpa_printf(MSG_DEBUG, "OWE: Update status %d, ie len %d for peer "
 			      MACSTR, status, (unsigned int) ie_len,
-			      MAC2STR(sta->addr));
-	hostapd_drv_update_dh_ie(hapd, sta->addr, status,
+			      MAC2STR(link_addr ? link_addr : sta->addr));
+	hostapd_drv_update_dh_ie(hapd, link_addr ? link_addr : sta->addr,
+				 status,
 				 status == WLAN_STATUS_SUCCESS ? ie : NULL,
 				 ie_len);
 
@@ -3652,40 +3809,35 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
 }
 
 
-static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
-			   const u8 *ies, size_t ies_len, int reassoc)
+static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+			     const u8 *ies, size_t ies_len,
+			     struct ieee802_11_elems *elems, int reassoc,
+			     bool link)
 {
-	struct ieee802_11_elems elems;
 	int resp;
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	const u8 *p2p_dev_addr = NULL;
 
-	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed) {
-		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
-			       HOSTAPD_LEVEL_INFO, "Station sent an invalid "
-			       "association request");
-		return WLAN_STATUS_UNSPECIFIED_FAILURE;
-	}
-
-	resp = check_ssid(hapd, sta, elems.ssid, elems.ssid_len);
+	resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
-	resp = check_wmm(hapd, sta, elems.wmm, elems.wmm_len);
+	resp = check_wmm(hapd, sta, elems->wmm, elems->wmm_len);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
-	resp = check_ext_capab(hapd, sta, elems.ext_capab, elems.ext_capab_len);
+	resp = check_ext_capab(hapd, sta, elems->ext_capab,
+			       elems->ext_capab_len);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
-	resp = copy_supp_rates(hapd, sta, &elems);
+	resp = copy_supp_rates(hapd, sta, elems);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
 
-	resp = check_multi_ap(hapd, sta, elems.multi_ap, elems.multi_ap_len);
+	resp = check_multi_ap(hapd, sta, elems->multi_ap, elems->multi_ap_len);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
 
-	resp = copy_sta_ht_capab(hapd, sta, elems.ht_capabilities);
+	resp = copy_sta_ht_capab(hapd, sta, elems->ht_capabilities);
 	if (resp != WLAN_STATUS_SUCCESS)
 		return resp;
 	if (hapd->iconf->ieee80211n && hapd->iconf->require_ht &&
@@ -3698,11 +3850,11 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 #ifdef CONFIG_IEEE80211AC
 	if (hapd->iconf->ieee80211ac) {
-		resp = copy_sta_vht_capab(hapd, sta, elems.vht_capabilities);
+		resp = copy_sta_vht_capab(hapd, sta, elems->vht_capabilities);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
 
-		resp = set_sta_vht_opmode(hapd, sta, elems.vht_opmode_notif);
+		resp = set_sta_vht_opmode(hapd, sta, elems->opmode_notif);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
 	}
@@ -3715,9 +3867,9 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		return WLAN_STATUS_ASSOC_DENIED_NO_VHT;
 	}
 
-	if (hapd->conf->vendor_vht && !elems.vht_capabilities) {
-		resp = copy_sta_vendor_vht(hapd, sta, elems.vendor_vht,
-					   elems.vendor_vht_len);
+	if (hapd->conf->vendor_vht && !elems->vht_capabilities) {
+		resp = copy_sta_vendor_vht(hapd, sta, elems->vendor_vht,
+					   elems->vendor_vht_len);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
 	}
@@ -3725,8 +3877,8 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_IEEE80211AX
 	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
 		resp = copy_sta_he_capab(hapd, sta, IEEE80211_MODE_AP,
-					 elems.he_capabilities,
-					 elems.he_capabilities_len);
+					 elems->he_capabilities,
+					 elems->he_capabilities_len);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
 
@@ -3747,7 +3899,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				return WLAN_STATUS_DENIED_HE_NOT_SUPPORTED;
 			}
 			resp = copy_sta_he_6ghz_capab(hapd, sta,
-						      elems.he_6ghz_band_cap);
+						      elems->he_6ghz_band_cap);
 			if (resp != WLAN_STATUS_SUCCESS)
 				return resp;
 		}
@@ -3756,17 +3908,23 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 		resp = copy_sta_eht_capab(hapd, sta, IEEE80211_MODE_AP,
-					  elems.he_capabilities,
-					  elems.he_capabilities_len,
-					  elems.eht_capabilities,
-					  elems.eht_capabilities_len);
+					  elems->he_capabilities,
+					  elems->he_capabilities_len,
+					  elems->eht_capabilities,
+					  elems->eht_capabilities_len);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
+
+		if (!link) {
+			resp = hostapd_process_ml_assoc_req(hapd, elems, sta);
+			if (resp != WLAN_STATUS_SUCCESS)
+				return resp;
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_P2P
-	if (elems.p2p) {
+	if (elems->p2p && ies && ies_len) {
 		wpabuf_free(sta->p2p_ie);
 		sta->p2p_ie = ieee802_11_vendor_ie_concat(ies, ies_len,
 							  P2P_IE_VENDOR_TYPE);
@@ -3778,13 +3936,13 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_P2P */
 
-	if ((hapd->conf->wpa & WPA_PROTO_RSN) && elems.rsn_ie) {
-		wpa_ie = elems.rsn_ie;
-		wpa_ie_len = elems.rsn_ie_len;
+	if ((hapd->conf->wpa & WPA_PROTO_RSN) && elems->rsn_ie) {
+		wpa_ie = elems->rsn_ie;
+		wpa_ie_len = elems->rsn_ie_len;
 	} else if ((hapd->conf->wpa & WPA_PROTO_WPA) &&
-		   elems.wpa_ie) {
-		wpa_ie = elems.wpa_ie;
-		wpa_ie_len = elems.wpa_ie_len;
+		   elems->wpa_ie) {
+		wpa_ie = elems->wpa_ie;
+		wpa_ie_len = elems->wpa_ie_len;
 	} else {
 		wpa_ie = NULL;
 		wpa_ie_len = 0;
@@ -3792,7 +3950,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 #ifdef CONFIG_WPS
 	sta->flags &= ~(WLAN_STA_WPS | WLAN_STA_MAYBE_WPS | WLAN_STA_WPS2);
-	if (hapd->conf->wps_state && elems.wps_ie) {
+	if (hapd->conf->wps_state && elems->wps_ie && ies && ies_len) {
 		wpa_printf(MSG_DEBUG, "STA included WPS IE in (Re)Association "
 			   "Request - assume WPS is used");
 		if (check_sa_query(hapd, sta, reassoc))
@@ -3833,23 +3991,44 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 		wpa_ie -= 2;
 		wpa_ie_len += 2;
-		if (sta->wpa_sm == NULL)
+
+		if (!sta->wpa_sm) {
+#ifdef CONFIG_IEEE80211BE
+			struct mld_info *info = &sta->mld_info;
+#endif /* CONFIG_IEEE80211BE */
+
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
 							p2p_dev_addr);
-		if (sta->wpa_sm == NULL) {
-			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
-				   "state machine");
-			return WLAN_STATUS_UNSPECIFIED_FAILURE;
+
+			if (!sta->wpa_sm) {
+				wpa_printf(MSG_WARNING,
+					   "Failed to initialize RSN state machine");
+				return WLAN_STATUS_UNSPECIFIED_FAILURE;
+			}
+
+#ifdef CONFIG_IEEE80211BE
+			if (info->mld_sta) {
+				wpa_printf(MSG_DEBUG,
+					   "MLD: Set ML info in RSN Authenticator");
+				wpa_auth_set_ml_info(sta->wpa_sm,
+						     hapd->mld_addr,
+						     sta->mld_assoc_link_id,
+						     info);
+			}
+#endif /* CONFIG_IEEE80211BE */
 		}
+
 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  wpa_ie, wpa_ie_len,
-					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
-					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
-					  elems.mdie, elems.mdie_len,
-					  elems.owe_dh, elems.owe_dh_len);
+					  elems->rsnxe ? elems->rsnxe - 2 :
+					  NULL,
+					  elems->rsnxe ? elems->rsnxe_len + 2 :
+					  0,
+					  elems->mdie, elems->mdie_len,
+					  elems->owe_dh, elems->owe_dh_len);
 		resp = wpa_res_to_status_code(res);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
@@ -3876,6 +4055,8 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		}
 #endif /* CONFIG_IEEE80211R_AP */
 
+		if (link)
+			goto skip_sae_owe;
 #ifdef CONFIG_SAE
 		if (wpa_auth_uses_sae(sta->wpa_sm) && sta->sae &&
 		    sta->sae->state == SAE_ACCEPTED)
@@ -3906,7 +4087,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		if (hapd->conf->sae_pwe == SAE_PWE_BOTH &&
 		    sta->auth_alg == WLAN_AUTH_SAE &&
 		    sta->sae && !sta->sae->h2e &&
-		    ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
+		    ieee802_11_rsnx_capab_len(elems->rsnxe, elems->rsnxe_len,
 					      WLAN_RSNX_CAPAB_SAE_H2E)) {
 			wpa_printf(MSG_INFO, "SAE: " MACSTR
 				   " indicates support for SAE H2E, but did not use it",
@@ -3918,13 +4099,14 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_OWE
 		if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) &&
 		    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_OWE &&
-		    elems.owe_dh) {
-			resp = owe_process_assoc_req(hapd, sta, elems.owe_dh,
-						     elems.owe_dh_len);
+		    elems->owe_dh) {
+			resp = owe_process_assoc_req(hapd, sta, elems->owe_dh,
+						     elems->owe_dh_len);
 			if (resp != WLAN_STATUS_SUCCESS)
 				return resp;
 		}
 #endif /* CONFIG_OWE */
+	skip_sae_owe:
 
 #ifdef CONFIG_DPP2
 		dpp_pfs_free(sta->dpp_pfs);
@@ -3934,7 +4116,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		    (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
 		    hapd->conf->dpp_netaccesskey && sta->wpa_sm &&
 		    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_DPP &&
-		    elems.owe_dh) {
+		    elems->owe_dh) {
 			sta->dpp_pfs = dpp_pfs_init(
 				wpabuf_head(hapd->conf->dpp_netaccesskey),
 				wpabuf_len(hapd->conf->dpp_netaccesskey));
@@ -3945,8 +4127,8 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				goto pfs_fail;
 			}
 
-			if (dpp_pfs_process(sta->dpp_pfs, elems.owe_dh,
-					    elems.owe_dh_len) < 0) {
+			if (dpp_pfs_process(sta->dpp_pfs, elems->owe_dh,
+					    elems->owe_dh_len) < 0) {
 				dpp_pfs_free(sta->dpp_pfs);
 				sta->dpp_pfs = NULL;
 				return WLAN_STATUS_UNSPECIFIED_FAILURE;
@@ -3969,7 +4151,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		}
 #ifdef CONFIG_HS20
 	} else if (hapd->conf->osen) {
-		if (elems.osen == NULL) {
+		if (!elems->osen) {
 			hostapd_logger(
 				hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 				HOSTAPD_LEVEL_INFO,
@@ -3987,7 +4169,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 		}
 		if (wpa_validate_osen(hapd->wpa_auth, sta->wpa_sm,
-				      elems.osen - 2, elems.osen_len + 2) < 0)
+				      elems->osen - 2, elems->osen_len + 2) < 0)
 			return WLAN_STATUS_INVALID_IE;
 #endif /* CONFIG_HS20 */
 	} else
@@ -3999,12 +4181,12 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 #ifdef CONFIG_HS20
 	wpabuf_free(sta->hs20_ie);
-	if (elems.hs20 && elems.hs20_len > 4) {
+	if (elems->hs20 && elems->hs20_len > 4) {
 		int release;
 
-		sta->hs20_ie = wpabuf_alloc_copy(elems.hs20 + 4,
-						 elems.hs20_len - 4);
-		release = ((elems.hs20[4] >> 4) & 0x0f) + 1;
+		sta->hs20_ie = wpabuf_alloc_copy(elems->hs20 + 4,
+						 elems->hs20_len - 4);
+		release = ((elems->hs20[4] >> 4) & 0x0f) + 1;
 		if (release >= 2 && !wpa_auth_uses_mfp(sta->wpa_sm) &&
 		    hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
 			wpa_printf(MSG_DEBUG,
@@ -4017,10 +4199,10 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 
 	wpabuf_free(sta->roaming_consortium);
-	if (elems.roaming_cons_sel)
+	if (elems->roaming_cons_sel)
 		sta->roaming_consortium = wpabuf_alloc_copy(
-			elems.roaming_cons_sel + 4,
-			elems.roaming_cons_sel_len - 4);
+			elems->roaming_cons_sel + 4,
+			elems->roaming_cons_sel_len - 4);
 	else
 		sta->roaming_consortium = NULL;
 #endif /* CONFIG_HS20 */
@@ -4028,16 +4210,16 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_FST
 	wpabuf_free(sta->mb_ies);
 	if (hapd->iface->fst)
-		sta->mb_ies = mb_ies_by_info(&elems.mb_ies);
+		sta->mb_ies = mb_ies_by_info(&elems->mb_ies);
 	else
 		sta->mb_ies = NULL;
 #endif /* CONFIG_FST */
 
 #ifdef CONFIG_MBO
-	mbo_ap_check_sta_assoc(hapd, sta, &elems);
+	mbo_ap_check_sta_assoc(hapd, sta, elems);
 
 	if (hapd->conf->mbo_enabled && (hapd->conf->wpa & 2) &&
-	    elems.mbo && sta->cell_capa && !(sta->flags & WLAN_STA_MFP) &&
+	    elems->mbo && sta->cell_capa && !(sta->flags & WLAN_STA_MFP) &&
 	    hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
 		wpa_printf(MSG_INFO,
 			   "MBO: Reject WPA2 association without PMF");
@@ -4067,7 +4249,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					  &tx_seg1_idx) < 0)
 			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 
-		res = ocv_verify_tx_params(elems.oci, elems.oci_len, &ci,
+		res = ocv_verify_tx_params(elems->oci, elems->oci_len, &ci,
 					   tx_chanwidth, tx_seg1_idx);
 		if (wpa_auth_uses_ocv(sta->wpa_sm) == 2 &&
 		    res == OCI_NOT_FOUND) {
@@ -4086,24 +4268,288 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_FILS && CONFIG_OCV */
 
-	ap_copy_sta_supp_op_classes(sta, elems.supp_op_classes,
-				    elems.supp_op_classes_len);
+	ap_copy_sta_supp_op_classes(sta, elems->supp_op_classes,
+				    elems->supp_op_classes_len);
 
 	if ((sta->capability & WLAN_CAPABILITY_RADIO_MEASUREMENT) &&
-	    elems.rrm_enabled &&
-	    elems.rrm_enabled_len >= sizeof(sta->rrm_enabled_capa))
-		os_memcpy(sta->rrm_enabled_capa, elems.rrm_enabled,
+	    elems->rrm_enabled &&
+	    elems->rrm_enabled_len >= sizeof(sta->rrm_enabled_capa))
+		os_memcpy(sta->rrm_enabled_capa, elems->rrm_enabled,
 			  sizeof(sta->rrm_enabled_capa));
 
-	if (elems.power_capab) {
-		sta->min_tx_power = elems.power_capab[0];
-		sta->max_tx_power = elems.power_capab[1];
+	if (elems->power_capab) {
+		sta->min_tx_power = elems->power_capab[0];
+		sta->max_tx_power = elems->power_capab[1];
 		sta->power_capab = 1;
 	} else {
 		sta->power_capab = 0;
 	}
 
 	return WLAN_STATUS_SUCCESS;
+}
+
+
+static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+			   const u8 *ies, size_t ies_len, int reassoc)
+{
+	struct ieee802_11_elems elems;
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed) {
+		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_INFO,
+			       "Station sent an invalid association request");
+		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+	}
+
+	return __check_assoc_ies(hapd, sta, ies, ies_len, &elems, reassoc,
+				 false);
+}
+
+
+#ifdef CONFIG_IEEE80211BE
+
+static size_t ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
+					    u16 status_code,
+					    u8 *buf, size_t buflen)
+{
+	u8 *p = buf;
+
+	/* Capability Info */
+	WPA_PUT_LE16(p, hostapd_own_capab_info(hapd));
+	p += 2;
+
+	/* Status Code */
+	WPA_PUT_LE16(p, status_code);
+	p += 2;
+
+	if (status_code != WLAN_STATUS_SUCCESS)
+		return p - buf;
+
+	/* AID is not included */
+	p = hostapd_eid_supp_rates(hapd, p);
+	p = hostapd_eid_ext_supp_rates(hapd, p);
+	p = hostapd_eid_rm_enabled_capab(hapd, p, buf + buflen - p);
+	p = hostapd_eid_ht_capabilities(hapd, p);
+	p = hostapd_eid_ht_operation(hapd, p);
+
+	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
+		p = hostapd_eid_vht_capabilities(hapd, p, 0);
+		p = hostapd_eid_vht_operation(hapd, p);
+	}
+
+	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
+		p = hostapd_eid_he_capab(hapd, p, IEEE80211_MODE_AP);
+		p = hostapd_eid_he_operation(hapd, p);
+		p = hostapd_eid_spatial_reuse(hapd, p);
+		p = hostapd_eid_he_mu_edca_parameter_set(hapd, p);
+		p = hostapd_eid_he_6ghz_band_cap(hapd, p);
+		if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+			p = hostapd_eid_eht_capab(hapd, p, IEEE80211_MODE_AP);
+			p = hostapd_eid_eht_operation(hapd, p);
+		}
+	}
+
+	p = hostapd_eid_ext_capab(hapd, p, false);
+	p = hostapd_eid_mbo(hapd, p, buf + buflen - p);
+	p = hostapd_eid_wmm(hapd, p);
+
+	if (hapd->conf->assocresp_elements &&
+	    (size_t) (buf + buflen - p) >=
+	    wpabuf_len(hapd->conf->assocresp_elements)) {
+		os_memcpy(p, wpabuf_head(hapd->conf->assocresp_elements),
+			  wpabuf_len(hapd->conf->assocresp_elements));
+		p += wpabuf_len(hapd->conf->assocresp_elements);
+	}
+
+	return p - buf;
+}
+
+
+static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+				      struct sta_info *origin_sta,
+				      struct mld_link_info *link,
+				      const u8 *ies, size_t ies_len,
+				      bool reassoc)
+{
+	struct ieee802_11_elems elems;
+	struct wpabuf *mlbuf = NULL;
+	struct sta_info *sta = NULL;
+	u16 status = WLAN_STATUS_SUCCESS;
+
+	wpa_printf(MSG_DEBUG, "MLD: link: link_id=%u, peer=" MACSTR,
+		   hapd->mld_link_id, MAC2STR(link->peer_addr));
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed) {
+		wpa_printf(MSG_DEBUG, "MLD: link: Element parsing failed");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto out;
+	}
+
+	sta = ap_get_sta(hapd, origin_sta->addr);
+	if (sta) {
+		wpa_printf(MSG_INFO, "MLD: link: Station already exists");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		sta = NULL;
+		goto out;
+	}
+
+	sta = ap_sta_add(hapd, origin_sta->addr);
+	if (!sta) {
+		wpa_printf(MSG_DEBUG, "MLD: link: ap_sta_add() failed");
+		status = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+		goto out;
+	}
+
+	mlbuf = ieee802_11_defrag_mle(&elems, MULTI_LINK_CONTROL_TYPE_BASIC);
+	if (!mlbuf)
+		goto out;
+
+	if (ieee802_11_parse_link_assoc_req(ies, ies_len, &elems, mlbuf,
+					    hapd->mld_link_id, true) ==
+	    ParseFailed) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: link: Failed to parse association request Multi-Link element");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto out;
+	}
+
+	sta->flags |= origin_sta->flags | WLAN_STA_ASSOC_REQ_OK;
+	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, reassoc, true);
+	if (status != WLAN_STATUS_SUCCESS) {
+		wpa_printf(MSG_DEBUG, "MLD: link: Element check failed");
+		goto out;
+	}
+
+	sta->mld_info.mld_sta = true;
+	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
+
+	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
+
+	/*
+	 * Get the AID from the station on which the association was performed,
+	 * and mark it as used.
+	 */
+	sta->aid = origin_sta->aid;
+	if (sta->aid == 0) {
+		wpa_printf(MSG_DEBUG, "MLD: link: No AID assigned");
+		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+		goto out;
+	}
+	hapd->sta_aid[(sta->aid - 1) / 32] |= BIT((sta->aid - 1) % 32);
+	sta->listen_interval = origin_sta->listen_interval;
+	update_ht_state(hapd, sta);
+
+	/* RSN Authenticator should always be the one on the original station */
+	wpa_auth_sta_deinit(sta->wpa_sm);
+	sta->wpa_sm = NULL;
+
+	/*
+	 * Do not initialize the EAPOL state machine.
+	 * TODO: Maybe it is needed?
+	 */
+	sta->eapol_sm = NULL;
+
+	wpa_printf(MSG_DEBUG, "MLD: link=%u, association OK (aid=%u)",
+		   hapd->mld_link_id, sta->aid);
+
+	/*
+	 * Get RSNE and RSNXE for the current BSS as they are required by the
+	 * Authenticator.
+	 */
+	link->rsne = hostapd_wpa_ie(hapd, WLAN_EID_RSN);
+	link->rsnxe = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
+
+	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC_REQ_OK;
+
+	/* TODO: What other processing is required? */
+
+	if (add_associated_sta(hapd, sta, reassoc))
+		status = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+out:
+	wpabuf_free(mlbuf);
+	link->status = status;
+
+	wpa_printf(MSG_DEBUG, "MLD: link: status=%u", status);
+	if (sta && status != WLAN_STATUS_SUCCESS)
+		ap_free_sta(hapd, sta);
+
+	link->resp_sta_profile_len =
+		ieee80211_ml_build_assoc_resp(hapd, link->status,
+					      link->resp_sta_profile,
+					      sizeof(link->resp_sta_profile));
+}
+
+
+bool hostapd_is_mld_ap(struct hostapd_data *hapd)
+{
+	if (!hapd->conf->mld_ap)
+		return false;
+
+	if (!hapd->iface || !hapd->iface->interfaces ||
+	    hapd->iface->interfaces->count <= 1)
+		return false;
+
+	return true;
+}
+
+#endif /* CONFIG_IEEE80211BE */
+
+
+static void hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+					  struct sta_info *sta,
+					  const u8 *ies, size_t ies_len,
+					  bool reassoc)
+{
+#ifdef CONFIG_IEEE80211BE
+	unsigned int i, j;
+
+	if (!hostapd_is_mld_ap(hapd))
+		return;
+
+	/*
+	 * This is not really needed, but make the interaction with the RSN
+	 * Authenticator more consistent
+	 */
+	sta->mld_info.links[hapd->mld_link_id].rsne =
+		hostapd_wpa_ie(hapd, WLAN_EID_RSN);
+	sta->mld_info.links[hapd->mld_link_id].rsnxe =
+		hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
+
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		struct hostapd_iface *iface = NULL;
+		struct mld_link_info *link = &sta->mld_info.links[i];
+
+		if (!link->valid)
+			continue;
+
+		for (j = 0; j < hapd->iface->interfaces->count; j++) {
+			iface = hapd->iface->interfaces->iface[j];
+
+			if (hapd->iface == iface)
+				continue;
+
+			if (iface->bss[0]->conf->mld_ap &&
+			    hapd->conf->mld_id == iface->bss[0]->conf->mld_id &&
+			    i == iface->bss[0]->mld_link_id)
+				break;
+		}
+
+		if (!iface || j == hapd->iface->interfaces->count) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: No link match for link_id=%u", i);
+
+			link->status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			link->resp_sta_profile_len =
+				ieee80211_ml_build_assoc_resp(
+					hapd, link->status,
+					link->resp_sta_profile,
+					sizeof(link->resp_sta_profile));
+		} else {
+			ieee80211_ml_process_link(iface->bss[0], sta, link,
+						  ies, ies_len, reassoc);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
 }
 
 
@@ -4137,6 +4583,20 @@ static int add_associated_sta(struct hostapd_data *hapd,
 	struct ieee80211_he_capabilities he_cap;
 	struct ieee80211_eht_capabilities eht_cap;
 	int set = 1;
+	const u8 *mld_link_addr = NULL;
+	bool mld_link_sta = false;
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
+		u8 mld_link_id = hapd->mld_link_id;
+
+		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+		mld_link_addr = sta->mld_info.links[mld_link_id].peer_addr;
+
+		if (hapd->mld_link_id != sta->mld_assoc_link_id)
+			set = 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	/*
 	 * Remove the STA entry to ensure the STA PS state gets cleared and
@@ -4165,7 +4625,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
 		   wpa_auth_sta_ft_tk_already_set(sta->wpa_sm),
 		   wpa_auth_sta_fils_tk_already_set(sta->wpa_sm));
 
-	if (!sta->added_unassoc &&
+	if (!mld_link_sta && !sta->added_unassoc &&
 	    (!(sta->flags & WLAN_STA_AUTHORIZED) ||
 	     (reassoc && sta->ft_over_ds && sta->auth_alg == WLAN_AUTH_FT) ||
 	     (!wpa_auth_sta_ft_tk_already_set(sta->wpa_sm) &&
@@ -4215,7 +4675,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
 			    sta->he_6ghz_capab,
 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
-			    set)) {
+			    set, mld_link_addr, mld_link_sta)) {
 		hostapd_logger(hapd, sta->addr,
 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
 			       "Could not %s STA to kernel driver",
@@ -4246,6 +4706,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	struct ieee80211_mgmt *reply;
 	u8 *p;
 	u16 res = WLAN_STATUS_SUCCESS;
+	const u8 *sa = hapd->own_addr;
 
 	buflen = sizeof(struct ieee80211_mgmt) + 1024;
 #ifdef CONFIG_FILS
@@ -4266,6 +4727,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 		buflen += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
+		if (hapd->iconf->punct_bitmap)
+			buflen += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -4279,9 +4742,19 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 		IEEE80211_FC(WLAN_FC_TYPE_MGMT,
 			     (reassoc ? WLAN_FC_STYPE_REASSOC_RESP :
 			      WLAN_FC_STYPE_ASSOC_RESP));
+
+#ifdef CONFIG_IEEE80211BE
+	/*
+	 * Once a non-AP MLD is added to the driver, the addressing should use
+	 * MLD MAC address.
+	 */
+	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta)
+		sa = hapd->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+
 	os_memcpy(reply->da, addr, ETH_ALEN);
-	os_memcpy(reply->sa, hapd->own_addr, ETH_ALEN);
-	os_memcpy(reply->bssid, hapd->own_addr, ETH_ALEN);
+	os_memcpy(reply->sa, sa, ETH_ALEN);
+	os_memcpy(reply->bssid, sa, ETH_ALEN);
 
 	send_len = IEEE80211_HDRLEN;
 	send_len += sizeof(reply->u.assoc_resp);
@@ -4417,6 +4890,8 @@ rsnxe_done:
 
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+		if (hapd->conf->mld_ap)
+			p = hostapd_eid_eht_basic_ml(hapd, p, sta, false);
 		p = hostapd_eid_eht_capab(hapd, p, IEEE80211_MODE_AP);
 		p = hostapd_eid_eht_operation(hapd, p);
 	}
@@ -5013,6 +5488,9 @@ static void handle_assoc(struct hostapd_data *hapd,
 	 *    issues with processing other non-Data Class 3 frames during this
 	 *    window.
 	 */
+	if (resp == WLAN_STATUS_SUCCESS)
+		hostapd_process_assoc_ml_info(hapd, sta, pos, left, reassoc);
+
 	if (resp == WLAN_STATUS_SUCCESS && sta &&
 	    add_associated_sta(hapd, sta, reassoc))
 		resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
@@ -5072,27 +5550,37 @@ static void handle_assoc(struct hostapd_data *hapd,
 }
 
 
-static void handle_disassoc(struct hostapd_data *hapd,
-			    const struct ieee80211_mgmt *mgmt, size_t len)
+static void hostapd_deauth_sta(struct hostapd_data *hapd,
+			       struct sta_info *sta,
+			       const struct ieee80211_mgmt *mgmt)
 {
-	struct sta_info *sta;
+	wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+		"deauthentication: STA=" MACSTR " reason_code=%d",
+		MAC2STR(mgmt->sa), le_to_host16(mgmt->u.deauth.reason_code));
 
-	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.disassoc)) {
-		wpa_printf(MSG_INFO, "handle_disassoc - too short payload (len=%lu)",
-			   (unsigned long) len);
-		return;
-	}
+	ap_sta_set_authorized(hapd, sta, 0);
+	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC |
+			WLAN_STA_ASSOC_REQ_OK);
+	hostapd_set_sta_flags(hapd, sta);
+	wpa_auth_sm_event(sta->wpa_sm, WPA_DEAUTH);
+	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+		       HOSTAPD_LEVEL_DEBUG, "deauthenticated");
+	mlme_deauthenticate_indication(
+		hapd, sta, le_to_host16(mgmt->u.deauth.reason_code));
+	sta->acct_terminate_cause = RADIUS_ACCT_TERMINATE_CAUSE_USER_REQUEST;
+	ieee802_1x_notify_port_enabled(sta->eapol_sm, 0);
+	ap_free_sta(hapd, sta);
+}
 
-	wpa_printf(MSG_DEBUG, "disassocation: STA=" MACSTR " reason_code=%d",
-		   MAC2STR(mgmt->sa),
-		   le_to_host16(mgmt->u.disassoc.reason_code));
 
-	sta = ap_get_sta(hapd, mgmt->sa);
-	if (sta == NULL) {
-		wpa_printf(MSG_INFO, "Station " MACSTR " trying to disassociate, but it is not associated",
-			   MAC2STR(mgmt->sa));
-		return;
-	}
+static void hostapd_disassoc_sta(struct hostapd_data *hapd,
+				 struct sta_info *sta,
+				 const struct ieee80211_mgmt *mgmt)
+{
+	wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+		"disassocation: STA=" MACSTR " reason_code=%d",
+		MAC2STR(mgmt->sa), le_to_host16(mgmt->u.disassoc.reason_code));
 
 	ap_sta_set_authorized(hapd, sta, 0);
 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
@@ -5137,45 +5625,173 @@ static void handle_disassoc(struct hostapd_data *hapd,
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+static struct sta_info *
+hostapd_ml_get_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+			 struct hostapd_data **assoc_hapd)
+{
+	struct hostapd_data *other_hapd = NULL;
+	struct sta_info *tmp_sta;
+
+	*assoc_hapd = hapd;
+
+	/* The station is the one on which the association was performed */
+	if (sta->mld_assoc_link_id == hapd->mld_link_id)
+		return sta;
+
+	other_hapd = hostapd_mld_get_link_bss(hapd, sta->mld_assoc_link_id);
+	if (!other_hapd) {
+		wpa_printf(MSG_DEBUG, "MLD: No link match for link_id=%u",
+			   sta->mld_assoc_link_id);
+		return sta;
+	}
+
+	/*
+	 * Iterate over the stations and find the one with the matching link ID
+	 * and association ID.
+	 */
+	for (tmp_sta = other_hapd->sta_list; tmp_sta; tmp_sta = tmp_sta->next) {
+		if (tmp_sta->mld_assoc_link_id == sta->mld_assoc_link_id &&
+		    tmp_sta->aid == sta->aid) {
+			*assoc_hapd = other_hapd;
+			return tmp_sta;
+		}
+	}
+
+	return sta;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
+static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
+					 struct sta_info *sta,
+					 const struct ieee80211_mgmt *mgmt,
+					 bool disassoc)
+{
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *assoc_hapd, *tmp_hapd;
+	struct sta_info *assoc_sta;
+	unsigned int i, link_id;
+
+	if (!hostapd_is_mld_ap(hapd))
+		return false;
+
+	/*
+	 * Get the station on which the association was performed, as it holds
+	 * the information about all the other links.
+	 */
+	assoc_sta = hostapd_ml_get_assoc_sta(hapd, sta, &assoc_hapd);
+
+	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+		for (i = 0; i < assoc_hapd->iface->interfaces->count; i++) {
+			struct sta_info *tmp_sta;
+
+			if (!assoc_sta->mld_info.links[link_id].valid)
+				continue;
+
+			tmp_hapd =
+				assoc_hapd->iface->interfaces->iface[i]->bss[0];
+
+			if (!tmp_hapd->conf->mld_ap ||
+			    assoc_hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+				continue;
+
+			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+			     tmp_sta = tmp_sta->next) {
+				/*
+				 * Remove the station on which the association
+				 * was done only after all other link stations
+				 * are removed. Since there is only a single
+				 * station per struct hostapd_hapd with the
+				 * same association link simply break out from
+				 * the loop.
+				 */
+				if (tmp_sta == assoc_sta)
+					break;
+
+				if (tmp_sta->mld_assoc_link_id !=
+				    assoc_sta->mld_assoc_link_id ||
+				    tmp_sta->aid != assoc_sta->aid)
+					continue;
+
+				if (!disassoc)
+					hostapd_deauth_sta(tmp_hapd, tmp_sta,
+							   mgmt);
+				else
+					hostapd_disassoc_sta(tmp_hapd, tmp_sta,
+							     mgmt);
+				break;
+			}
+		}
+	}
+
+	/* Remove the station on which the association was performed. */
+	if (!disassoc)
+		hostapd_deauth_sta(assoc_hapd, assoc_sta, mgmt);
+	else
+		hostapd_disassoc_sta(assoc_hapd, assoc_sta, mgmt);
+
+	return true;
+#else /* CONFIG_IEEE80211BE */
+	return false;
+#endif /* CONFIG_IEEE80211BE */
+}
+
+
+static void handle_disassoc(struct hostapd_data *hapd,
+			    const struct ieee80211_mgmt *mgmt, size_t len)
+{
+	struct sta_info *sta;
+
+	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.disassoc)) {
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+			   "handle_disassoc - too short payload (len=%lu)",
+			   (unsigned long) len);
+		return;
+	}
+
+	sta = ap_get_sta(hapd, mgmt->sa);
+	if (!sta) {
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Station " MACSTR
+			" trying to disassociate, but it is not associated",
+			MAC2STR(mgmt->sa));
+		return;
+	}
+
+	if (hostapd_ml_handle_disconnect(hapd, sta, mgmt, true))
+		return;
+
+	hostapd_disassoc_sta(hapd, sta, mgmt);
+}
+
+
 static void handle_deauth(struct hostapd_data *hapd,
 			  const struct ieee80211_mgmt *mgmt, size_t len)
 {
 	struct sta_info *sta;
 
 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.deauth)) {
-		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "handle_deauth - too short "
-			"payload (len=%lu)", (unsigned long) len);
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+			"handle_deauth - too short payload (len=%lu)",
+			(unsigned long) len);
 		return;
 	}
-
-	wpa_msg(hapd->msg_ctx, MSG_DEBUG, "deauthentication: STA=" MACSTR
-		" reason_code=%d",
-		MAC2STR(mgmt->sa), le_to_host16(mgmt->u.deauth.reason_code));
 
 	/* Clear the PTKSA cache entries for PASN */
 	ptksa_cache_flush(hapd->ptksa, mgmt->sa, WPA_CIPHER_NONE);
 
 	sta = ap_get_sta(hapd, mgmt->sa);
-	if (sta == NULL) {
-		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Station " MACSTR " trying "
-			"to deauthenticate, but it is not authenticated",
+	if (!sta) {
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Station " MACSTR
+			" trying to deauthenticate, but it is not authenticated",
 			MAC2STR(mgmt->sa));
 		return;
 	}
 
-	ap_sta_set_authorized(hapd, sta, 0);
-	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
-	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC |
-			WLAN_STA_ASSOC_REQ_OK);
-	hostapd_set_sta_flags(hapd, sta);
-	wpa_auth_sm_event(sta->wpa_sm, WPA_DEAUTH);
-	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
-		       HOSTAPD_LEVEL_DEBUG, "deauthenticated");
-	mlme_deauthenticate_indication(
-		hapd, sta, le_to_host16(mgmt->u.deauth.reason_code));
-	sta->acct_terminate_cause = RADIUS_ACCT_TERMINATE_CAUSE_USER_REQUEST;
-	ieee802_1x_notify_port_enabled(sta->eapol_sm, 0);
-	ap_free_sta(hapd, sta);
+	if (hostapd_ml_handle_disconnect(hapd, sta, mgmt, false))
+		return;
+
+	hostapd_deauth_sta(hapd, sta, mgmt);
 }
 
 
@@ -5480,6 +6096,10 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 #ifdef CONFIG_MESH
 	    !(hapd->conf->mesh & MESH_ENABLED) &&
 #endif /* CONFIG_MESH */
+#ifdef CONFIG_IEEE80211BE
+	    !(hapd->conf->mld_ap &&
+	      os_memcmp(hapd->mld_addr, mgmt->bssid, ETH_ALEN) == 0) &&
+#endif /* CONFIG_IEEE80211BE */
 	    os_memcmp(mgmt->bssid, hapd->own_addr, ETH_ALEN) != 0) {
 		wpa_printf(MSG_INFO, "MGMT: BSSID=" MACSTR " not our address",
 			   MAC2STR(mgmt->bssid));
@@ -5499,6 +6119,10 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 
 	if ((!is_broadcast_ether_addr(mgmt->da) ||
 	     stype != WLAN_FC_STYPE_ACTION) &&
+#ifdef CONFIG_IEEE80211BE
+	    !(hapd->conf->mld_ap &&
+	      os_memcmp(hapd->mld_addr, mgmt->bssid, ETH_ALEN) == 0) &&
+#endif /* CONFIG_IEEE80211BE */
 	    os_memcmp(mgmt->da, hapd->own_addr, ETH_ALEN) != 0) {
 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_DEBUG,
@@ -5643,6 +6267,90 @@ static void hostapd_set_wds_encryption(struct hostapd_data *hapd,
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+static void ieee80211_ml_link_sta_assoc_cb(struct hostapd_data *hapd,
+					   struct sta_info *sta,
+					   struct mld_link_info *link,
+					   bool ok)
+{
+	if (!ok) {
+		hostapd_logger(hapd, link->peer_addr, HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_DEBUG,
+			       "did not acknowledge association response");
+		sta->flags &= ~WLAN_STA_ASSOC_REQ_OK;
+
+		/* The STA is added only in case of SUCCESS */
+		if (link->status == WLAN_STATUS_SUCCESS)
+			hostapd_drv_sta_remove(hapd, sta->addr);
+
+		return;
+	}
+
+	if (link->status != WLAN_STATUS_SUCCESS)
+		return;
+
+	sta->flags |= WLAN_STA_ASSOC;
+	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+
+	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa)
+		ap_sta_set_authorized(hapd, sta, 1);
+
+	hostapd_set_sta_flags(hapd, sta);
+
+	/*
+	 * TODOs:
+	 * - IEEE 802.1X port enablement is not needed as done on the station
+	 *     doing the connection.
+	 * - Not handling accounting
+	 * - Need to handle VLAN configuration
+	 */
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
+static void hostapd_ml_handle_assoc_cb(struct hostapd_data *hapd,
+				       struct sta_info *sta, bool ok)
+{
+#ifdef CONFIG_IEEE80211BE
+	unsigned int i, link_id;
+
+	if (!hostapd_is_mld_ap(hapd))
+		return;
+
+	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+		struct mld_link_info *link = &sta->mld_info.links[link_id];
+
+		if (!link->valid)
+			continue;
+
+		for (i = 0; i < hapd->iface->interfaces->count; i++) {
+			struct sta_info *tmp_sta;
+			struct hostapd_data *tmp_hapd =
+				hapd->iface->interfaces->iface[i]->bss[0];
+
+			if (tmp_hapd->conf->mld_ap ||
+			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+				continue;
+
+			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+			     tmp_sta = tmp_sta->next) {
+				if (tmp_sta == sta ||
+				    tmp_sta->mld_assoc_link_id !=
+				    sta->mld_assoc_link_id ||
+				    tmp_sta->aid != sta->aid)
+					continue;
+
+				ieee80211_ml_link_sta_assoc_cb(tmp_hapd,
+							       tmp_sta, link,
+							       ok);
+				break;
+			}
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+}
+
+
 static void handle_assoc_cb(struct hostapd_data *hapd,
 			    const struct ieee80211_mgmt *mgmt,
 			    size_t len, int reassoc, int ok)
@@ -5657,6 +6365,17 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 			   MAC2STR(mgmt->da));
 		return;
 	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
+	    hapd->mld_link_id != sta->mld_assoc_link_id) {
+		/* See ieee80211_ml_link_sta_assoc_cb() for the MLD case */
+		wpa_printf(MSG_DEBUG,
+			   "%s: MLD: ignore on link station (%d != %d)",
+			   __func__, hapd->mld_link_id, sta->mld_assoc_link_id);
+		return;
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_resp) :
 				      sizeof(mgmt->u.assoc_resp))) {
@@ -5681,11 +6400,11 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 		if (status == WLAN_STATUS_SUCCESS)
 			hostapd_drv_sta_remove(hapd, sta->addr);
 
-		return;
+		goto handle_ml;
 	}
 
 	if (status != WLAN_STATUS_SUCCESS)
-		return;
+		goto handle_ml;
 
 	/* Stop previous accounting session, if one is started, and allocate
 	 * new session id for the new session. */
@@ -5727,11 +6446,11 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 		 * interface selection is not going to change anymore.
 		 */
 		if (ap_sta_bind_vlan(hapd, sta) < 0)
-			return;
+			goto handle_ml;
 	} else if (sta->vlan_id) {
 		/* VLAN ID already set (e.g., by PMKSA caching), so bind STA */
 		if (ap_sta_bind_vlan(hapd, sta) < 0)
-			return;
+			goto handle_ml;
 	}
 
 	hostapd_set_sta_flags(hapd, sta);
@@ -5744,7 +6463,11 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 		sta->flags |= WLAN_STA_WDS;
 	}
 
-	if (sta->flags & (WLAN_STA_WDS | WLAN_STA_MULTI_AP)) {
+	/* WPS not supported on backhaul BSS. Disable 4addr mode on fronthaul */
+	if ((sta->flags & WLAN_STA_WDS) ||
+	    (sta->flags & WLAN_STA_MULTI_AP &&
+	     !(hapd->conf->multi_ap & FRONTHAUL_BSS) &&
+	     !(sta->flags & WLAN_STA_WPS))) {
 		int ret;
 		char ifname_wds[IFNAMSIZ + 1];
 
@@ -5795,6 +6518,9 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 		os_free(sta->pending_eapol_rx);
 		sta->pending_eapol_rx = NULL;
 	}
+
+handle_ml:
+	hostapd_ml_handle_assoc_cb(hapd, sta, ok);
 }
 
 
@@ -6333,7 +7059,7 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 	     !hapd->cs_freq_params.eht_enabled))
 		return eid;
 
-	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80 */
+	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80, 4: 320 */
 	switch (hapd->cs_freq_params.bandwidth) {
 	case 40:
 		bw = 0;
@@ -6347,6 +7073,9 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 		break;
 	case 160:
 		bw = 2;
+		break;
+	case 320:
+		bw = 4;
 		break;
 	default:
 		/* not valid VHT bandwidth or not in CSA */
@@ -6365,9 +7094,9 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 				   &chan2) != HOSTAPD_MODE_IEEE80211A)
 		return eid;
 
-	*eid++ = WLAN_EID_VHT_CHANNEL_SWITCH_WRAPPER;
+	*eid++ = WLAN_EID_CHANNEL_SWITCH_WRAPPER;
 	*eid++ = 5; /* Length of Channel Switch Wrapper */
-	*eid++ = WLAN_EID_VHT_WIDE_BW_CHSWITCH;
+	*eid++ = WLAN_EID_WIDE_BW_CHSWITCH;
 	*eid++ = 3; /* Length of Wide Bandwidth Channel Switch element */
 	*eid++ = bw; /* New Channel Width */
 	*eid++ = chan1; /* New Channel Center Frequency Segment 0 */
@@ -6407,13 +7136,25 @@ static size_t hostapd_eid_nr_db_len(struct hostapd_data *hapd,
 }
 
 
-static size_t hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
-					struct hostapd_data *reporting_hapd,
-					size_t *current_len)
+struct mbssid_ie_profiles {
+	u8 start;
+	u8 end;
+};
+
+static size_t
+hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
+			  struct hostapd_data *reporting_hapd,
+			  size_t *current_len,
+			  struct mbssid_ie_profiles *skip_profiles)
 {
 	size_t total_len = 0, len = *current_len;
 	int tbtt_count = 0;
 	size_t i, start = 0;
+	bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	ap_mld = !!hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 	while (start < hapd->iface->num_bss) {
 		if (!len ||
@@ -6435,12 +7176,21 @@ static size_t hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
 			    bss->conf->ignore_broadcast_ssid)
 				continue;
 
+			if (skip_profiles &&
+			    i >= skip_profiles->start && i < skip_profiles->end)
+				continue;
+
 			if (len + RNR_TBTT_INFO_LEN > 255 ||
 			    tbtt_count >= RNR_TBTT_INFO_COUNT_MAX)
 				break;
 
-			len += RNR_TBTT_INFO_LEN;
-			total_len += RNR_TBTT_INFO_LEN;
+			if (!ap_mld) {
+				len += RNR_TBTT_INFO_LEN;
+				total_len += RNR_TBTT_INFO_LEN;
+			} else {
+				len += RNR_TBTT_INFO_MLD_LEN;
+				total_len += RNR_TBTT_INFO_MLD_LEN;
+			}
 			tbtt_count++;
 		}
 		start = i;
@@ -6495,8 +7245,8 @@ static enum colocation_mode get_colocation_mode(struct hostapd_data *hapd)
 }
 
 
-static size_t hostapd_eid_rnr_colocation_len(struct hostapd_data *hapd,
-					     size_t *current_len)
+static size_t hostapd_eid_rnr_multi_iface_len(struct hostapd_data *hapd,
+					      size_t *current_len)
 {
 	struct hostapd_iface *iface;
 	size_t len = 0;
@@ -6507,13 +7257,20 @@ static size_t hostapd_eid_rnr_colocation_len(struct hostapd_data *hapd,
 
 	for (i = 0; i < hapd->iface->interfaces->count; i++) {
 		iface = hapd->iface->interfaces->iface[i];
+		bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
+		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
+			ap_mld = true;
+#endif /* CONFIG_IEEE80211BE */
 
 		if (iface == hapd->iface ||
-		    !is_6ghz_op_class(iface->conf->op_class))
+		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
 			continue;
 
 		len += hostapd_eid_rnr_iface_len(iface->bss[0], hapd,
-						 current_len);
+						 current_len, NULL);
 	}
 
 	return len;
@@ -6524,6 +7281,11 @@ size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type)
 {
 	size_t total_len = 0, current_len = 0;
 	enum colocation_mode mode = get_colocation_mode(hapd);
+	bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	ap_mld = !!hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 	switch (type) {
 	case WLAN_FC_STYPE_BEACON:
@@ -6532,19 +7294,23 @@ size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type)
 		/* fallthrough */
 
 	case WLAN_FC_STYPE_PROBE_RESP:
-		if (mode == COLOCATED_LOWER_BAND)
-			total_len += hostapd_eid_rnr_colocation_len(
-				hapd, &current_len);
+		if (mode == COLOCATED_LOWER_BAND || ap_mld)
+			total_len +=
+				hostapd_eid_rnr_multi_iface_len(hapd,
+								&current_len);
 
-		if (hapd->conf->rnr && hapd->iface->num_bss > 1)
+		if (hapd->conf->rnr && hapd->iface->num_bss > 1 &&
+		    !hapd->iconf->mbssid)
 			total_len += hostapd_eid_rnr_iface_len(hapd, hapd,
-							       &current_len);
+							       &current_len,
+							       NULL);
 		break;
 
 	case WLAN_FC_STYPE_ACTION:
 		if (hapd->iface->num_bss > 1 && mode == STANDALONE_6GHZ)
 			total_len += hostapd_eid_rnr_iface_len(hapd, hapd,
-							       &current_len);
+							       &current_len,
+							       NULL);
 		break;
 
 	default:
@@ -6612,7 +7378,8 @@ static u8 * hostapd_eid_nr_db(struct hostapd_data *hapd, u8 *eid,
 
 static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 				  struct hostapd_data *reporting_hapd,
-				  u8 *eid, size_t *current_len)
+				  u8 *eid, size_t *current_len,
+				  struct mbssid_ie_profiles *skip_profiles)
 {
 	struct hostapd_data *bss;
 	struct hostapd_iface *iface = hapd->iface;
@@ -6620,6 +7387,11 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 	size_t len = *current_len;
 	u8 *tbtt_count_pos, *eid_start = eid, *size_offset = (eid - len) + 1;
 	u8 tbtt_count = 0, op_class, channel, bss_param;
+	bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	ap_mld = !!hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 	if (!(iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA) || !iface->freq)
 		return eid;
@@ -6642,7 +7414,7 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 		}
 
 		tbtt_count_pos = eid++;
-		*eid++ = RNR_TBTT_INFO_LEN;
+		*eid++ = ap_mld ? RNR_TBTT_INFO_MLD_LEN : RNR_TBTT_INFO_LEN;
 		*eid++ = op_class;
 		*eid++ = hapd->iconf->channel;
 		len += RNR_TBTT_HEADER_LEN;
@@ -6655,6 +7427,10 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 
 			if (bss == reporting_hapd ||
 			    bss->conf->ignore_broadcast_ssid)
+				continue;
+
+			if (skip_profiles &&
+			    i >= skip_profiles->start && i < skip_profiles->end)
 				continue;
 
 			if (len + RNR_TBTT_INFO_LEN > 255 ||
@@ -6673,7 +7449,7 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 			if (iface->conf->mbssid != MBSSID_DISABLED &&
 			    iface->num_bss > 1) {
 				bss_param |= RNR_BSS_PARAM_MULTIPLE_BSSID;
-				if (i == 0)
+				if (bss == hostapd_mbssid_get_tx_bss(hapd))
 					bss_param |=
 						RNR_BSS_PARAM_TRANSMITTED_BSSID;
 			}
@@ -6687,7 +7463,18 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 
 			*eid++ = bss_param;
 			*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
-			len += RNR_TBTT_INFO_LEN;
+
+			if (!ap_mld) {
+				len += RNR_TBTT_INFO_LEN;
+			} else {
+#ifdef CONFIG_IEEE80211BE
+				*eid++ = hapd->conf->mld_id;
+				*eid++ = hapd->mld_link_id | (1 << 4);
+				*eid++ = 0;
+				len += RNR_TBTT_INFO_MLD_LEN;
+#endif /* CONFIG_IEEE80211BE */
+			}
+
 			tbtt_count += 1;
 		}
 
@@ -6704,8 +7491,8 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 }
 
 
-static u8 * hostapd_eid_rnr_colocation(struct hostapd_data *hapd, u8 *eid,
-				       size_t *current_len)
+static u8 * hostapd_eid_rnr_multi_iface(struct hostapd_data *hapd, u8 *eid,
+					size_t *current_len)
 {
 	struct hostapd_iface *iface;
 	size_t i;
@@ -6715,13 +7502,20 @@ static u8 * hostapd_eid_rnr_colocation(struct hostapd_data *hapd, u8 *eid,
 
 	for (i = 0; i < hapd->iface->interfaces->count; i++) {
 		iface = hapd->iface->interfaces->iface[i];
+		bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
+		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
+			ap_mld = true;
+#endif /* CONFIG_IEEE80211BE */
 
 		if (iface == hapd->iface ||
-		    !is_6ghz_op_class(iface->conf->op_class))
+		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
 			continue;
 
 		eid = hostapd_eid_rnr_iface(iface->bss[0], hapd, eid,
-					    current_len);
+					    current_len, NULL);
 	}
 
 	return eid;
@@ -6733,6 +7527,11 @@ u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type)
 	u8 *eid_start = eid;
 	size_t current_len = 0;
 	enum colocation_mode mode = get_colocation_mode(hapd);
+	bool ap_mld = false;
+
+#ifdef CONFIG_IEEE80211BE
+	ap_mld = !!hapd->conf->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
 
 	switch (type) {
 	case WLAN_FC_STYPE_BEACON:
@@ -6741,19 +7540,20 @@ u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type)
 		/* fallthrough */
 
 	case WLAN_FC_STYPE_PROBE_RESP:
-		if (mode == COLOCATED_LOWER_BAND)
-			eid = hostapd_eid_rnr_colocation(hapd, eid,
-							 &current_len);
+		if (mode == COLOCATED_LOWER_BAND || ap_mld)
+			eid = hostapd_eid_rnr_multi_iface(hapd, eid,
+							  &current_len);
 
-		if (hapd->conf->rnr && hapd->iface->num_bss > 1)
+		if (hapd->conf->rnr && hapd->iface->num_bss > 1 &&
+		    !hapd->iconf->mbssid)
 			eid = hostapd_eid_rnr_iface(hapd, hapd, eid,
-						    &current_len);
+						    &current_len, NULL);
 		break;
 
 	case WLAN_FC_STYPE_ACTION:
 		if (hapd->iface->num_bss > 1 && mode == STANDALONE_6GHZ)
 			eid = hostapd_eid_rnr_iface(hapd, hapd,	eid,
-						    &current_len);
+						    &current_len, NULL);
 		break;
 
 	default:
@@ -6842,7 +7642,7 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 
 size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd, u32 frame_type,
 			      u8 *elem_count, const u8 *known_bss,
-			      size_t known_bss_len)
+			      size_t known_bss_len, size_t *rnr_len)
 {
 	size_t len = 0, bss_index = 1;
 
@@ -6861,13 +7661,29 @@ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd, u32 frame_type,
 	}
 
 	while (bss_index < hapd->iface->num_bss) {
+		size_t rnr_count = bss_index;
+
 		len += hostapd_eid_mbssid_elem_len(hapd, frame_type,
 						   &bss_index, known_bss,
 						   known_bss_len);
 
 		if (frame_type == WLAN_FC_STYPE_BEACON)
 			*elem_count += 1;
+		if (hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED && rnr_len) {
+			size_t rnr_cur_len = 0;
+			struct mbssid_ie_profiles skip_profiles = {
+				rnr_count, bss_index
+			};
+
+			*rnr_len += hostapd_eid_rnr_iface_len(
+				hapd, hostapd_mbssid_get_tx_bss(hapd),
+				&rnr_cur_len, &skip_profiles);
+		}
 	}
+
+	if (hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED && rnr_len)
+		*rnr_len += hostapd_eid_rnr_len(hapd, frame_type);
+
 	return len;
 }
 
@@ -6979,10 +7795,12 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
 u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			unsigned int frame_stype, u8 elem_count,
 			u8 **elem_offset,
-			const u8 *known_bss, size_t known_bss_len)
+			const u8 *known_bss, size_t known_bss_len, u8 *rnr_eid,
+			u8 *rnr_count, u8 **rnr_offset, size_t rnr_len)
 {
-	size_t bss_index = 1;
-	u8 elem_index = 0;
+	size_t bss_index = 1, cur_len = 0;
+	u8 elem_index = 0, *rnr_start_eid = rnr_eid;
+	bool add_rnr;
 
 	if (!hapd->iconf->mbssid || hapd->iface->num_bss <= 1 ||
 	    (frame_stype != WLAN_FC_STYPE_BEACON &&
@@ -6995,7 +7813,13 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 		return eid;
 	}
 
+	add_rnr = hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED &&
+		frame_stype == WLAN_FC_STYPE_BEACON &&
+		rnr_eid && rnr_count && rnr_offset && rnr_len;
+
 	while (bss_index < hapd->iface->num_bss) {
+		unsigned int rnr_start_count = bss_index;
+
 		if (frame_stype == WLAN_FC_STYPE_BEACON) {
 			if (elem_index == elem_count) {
 				wpa_printf(MSG_WARNING,
@@ -7010,9 +7834,103 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 					      hostapd_max_bssid_indicator(hapd),
 					      &bss_index, elem_count,
 					      known_bss, known_bss_len);
+
+		if (add_rnr) {
+			struct mbssid_ie_profiles skip_profiles = {
+				rnr_start_count, bss_index
+			};
+
+			rnr_offset[*rnr_count] = rnr_eid;
+			*rnr_count = *rnr_count + 1;
+			cur_len = 0;
+			rnr_eid = hostapd_eid_rnr_iface(
+				hapd, hostapd_mbssid_get_tx_bss(hapd),
+				rnr_eid, &cur_len, &skip_profiles);
+		}
+	}
+
+	if (add_rnr && (size_t) (rnr_eid - rnr_start_eid) < rnr_len) {
+		rnr_offset[*rnr_count] = rnr_eid;
+		*rnr_count = *rnr_count + 1;
+		cur_len = 0;
+
+		if (hapd->conf->rnr)
+			rnr_eid = hostapd_eid_nr_db(hapd, rnr_eid, &cur_len);
+		if (get_colocation_mode(hapd) == COLOCATED_LOWER_BAND)
+			rnr_eid = hostapd_eid_rnr_multi_iface(hapd, rnr_eid,
+							      &cur_len);
 	}
 
 	return eid;
+}
+
+
+static void punct_update_legacy_bw_80(u8 bitmap, u8 pri_chan, u8 *seg0)
+{
+	u8 first_chan = *seg0 - 6, sec_chan;
+
+	switch (bitmap) {
+	case 0x6:
+		*seg0 = 0;
+		return;
+	case 0x8:
+	case 0x4:
+	case 0x2:
+	case 0x1:
+	case 0xC:
+	case 0x3:
+		if (pri_chan < *seg0)
+			*seg0 -= 4;
+		else
+			*seg0 += 4;
+		break;
+	}
+
+	if (pri_chan < *seg0)
+		sec_chan = pri_chan + 4;
+	else
+		sec_chan = pri_chan - 4;
+
+	if (bitmap & BIT((sec_chan - first_chan) / 4))
+		*seg0 = 0;
+}
+
+
+static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
+				       enum oper_chan_width *width, u8 *seg0)
+{
+	if (pri < *seg0) {
+		*seg0 -= 8;
+		if (bitmap & 0x0F) {
+			*width = 0;
+			punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
+		}
+	} else {
+		*seg0 += 8;
+		if (bitmap & 0xF0) {
+			*width = 0;
+			punct_update_legacy_bw_80((bitmap & 0xF0) >> 4, pri,
+						  seg0);
+		}
+	}
+}
+
+
+void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
+			    u8 *seg0, u8 *seg1)
+{
+	if (*width == CONF_OPER_CHWIDTH_80MHZ && (bitmap & 0xF)) {
+		*width = CONF_OPER_CHWIDTH_USE_HT;
+		punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
+	}
+
+	if (*width == CONF_OPER_CHWIDTH_160MHZ && (bitmap & 0xFF)) {
+		*width = CONF_OPER_CHWIDTH_80MHZ;
+		*seg1 = 0;
+		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
+	}
+
+	/* TODO: 320 MHz */
 }
 
 #endif /* CONFIG_NATIVE_WINDOWS */

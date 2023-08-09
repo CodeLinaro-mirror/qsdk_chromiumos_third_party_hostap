@@ -2501,6 +2501,7 @@ static const struct parse_data ssid_fields[] = {
 	{ FUNC(freq_list) },
 	{ INT_RANGE(ht, 0, 1) },
 	{ INT_RANGE(vht, 0, 1) },
+	{ INT_RANGE(he, 0, 1) },
 	{ INT_RANGE(ht40, -1, 1) },
 	{ INT_RANGE(max_oper_chwidth, CONF_OPER_CHWIDTH_USE_HT,
 		    CONF_OPER_CHWIDTH_80P80MHZ) },
@@ -2677,6 +2678,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(macsec_integ_only, 0, 1) },
 	{ INT_RANGE(macsec_replay_protect, 0, 1) },
 	{ INT(macsec_replay_window) },
+	{ INT_RANGE(macsec_offload, 0, 2) },
 	{ INT_RANGE(macsec_port, 1, 65534) },
 	{ INT_RANGE(mka_priority, 0, 255) },
 	{ INT_RANGE(macsec_csindex, 0, 1) },
@@ -2710,6 +2712,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(transition_disable, 0, 255) },
 	{ INT_RANGE(sae_pk, 0, 2) },
 	{ INT_RANGE(disable_eht, 0, 1)},
+	{ INT_RANGE(enable_4addr_mode, 0, 1)},
 };
 
 #undef OFFSET

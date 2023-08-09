@@ -2971,7 +2971,7 @@ def test_ap_wpa2_eap_ttls_server_cert_hash(dev, apdev):
     """WPA2-Enterprise connection using EAP-TTLS and server certificate hash"""
     check_cert_probe_support(dev[0])
     skip_with_fips(dev[0])
-    srv_cert_hash = "37bbb34133f7a3aa56056aae457a0ec7f55ed59fe8fd71107f8ad4a9c81e339f"
+    srv_cert_hash = "645830f9c128146bd1420aadc5179ffc4d4f0ef34f63075cefdd7d14a6c5af79"
     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
     hapd = hostapd.add_ap(apdev[0], params)
     dev[0].connect("test-wpa2-eap", key_mgmt="WPA-EAP", eap="TTLS",
@@ -4416,7 +4416,7 @@ def ocsp_req(outfile):
            "-reqout", outfile,
            '-issuer', 'auth_serv/ca.pem',
            '-sha256',
-           '-serial', '0xD8D3E3A6CBE3CD73',
+           '-serial', '0xD8D3E3A6CBE3CD7D',
            '-no_nonce']
     run_openssl(arg)
     if not os.path.exists(outfile):
@@ -6353,14 +6353,22 @@ def check_tls_session_resumption_capa(dev, hapd):
 
 def test_eap_ttls_pap_session_resumption(dev, apdev):
     """EAP-TTLS/PAP session resumption"""
+    run_eap_ttls_pap_session_resumption(dev, apdev, False)
+
+def test_eap_ttls_pap_session_resumption_force_phase2(dev, apdev):
+    """EAP-TTLS/PAP session resumption while forcing Phase 2 authentication"""
+    run_eap_ttls_pap_session_resumption(dev, apdev, True)
+
+def run_eap_ttls_pap_session_resumption(dev, apdev, phase2_auth):
     params = int_eap_server_params()
     params['tls_session_lifetime'] = '60'
     hapd = hostapd.add_ap(apdev[0], params)
     check_tls_session_resumption_capa(dev[0], hapd)
+    phase1 = "phase2_auth=2" if phase2_auth else ""
     eap_connect(dev[0], hapd, "TTLS", "pap user",
                 anonymous_identity="ttls", password="password",
                 ca_cert="auth_serv/ca.pem", eap_workaround='0',
-                phase2="auth=PAP")
+                phase1=phase1, phase2="auth=PAP")
     if dev[0].get_status_field("tls_session_reused") != '0':
         raise Exception("Unexpected session resumption on the first connection")
 
@@ -6371,7 +6379,10 @@ def test_eap_ttls_pap_session_resumption(dev, apdev):
     ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=10)
     if ev is None:
         raise Exception("Key handshake with the AP timed out")
-    if dev[0].get_status_field("tls_session_reused") != '1':
+    reused = dev[0].get_status_field("tls_session_reused") == '1'
+    if phase2_auth and reused:
+        raise Exception("Session resumption used on the second connection")
+    if not phase2_auth and not reused:
         raise Exception("Session resumption not used on the second connection")
     hwsim_utils.test_connectivity(dev[0], hapd)
 
@@ -6492,14 +6503,23 @@ def test_eap_ttls_no_session_resumption(dev, apdev):
 
 def test_eap_peap_session_resumption(dev, apdev):
     """EAP-PEAP session resumption"""
+    run_eap_peap_session_resumption(dev, apdev, False)
+
+def test_eap_peap_session_resumption_force_phase2(dev, apdev):
+    """EAP-PEAP session resumption while forcing Phase 2 authentication"""
+    run_eap_peap_session_resumption(dev, apdev, True)
+
+def run_eap_peap_session_resumption(dev, apdev, phase2_auth):
     check_eap_capa(dev[0], "MSCHAPV2")
     params = int_eap_server_params()
     params['tls_session_lifetime'] = '60'
     hapd = hostapd.add_ap(apdev[0], params)
     check_tls_session_resumption_capa(dev[0], hapd)
+    phase1 = "phase2_auth=2" if phase2_auth else ""
     eap_connect(dev[0], hapd, "PEAP", "user",
                 anonymous_identity="peap", password="password",
-                ca_cert="auth_serv/ca.pem", phase2="auth=MSCHAPV2")
+                ca_cert="auth_serv/ca.pem", phase1=phase1,
+                phase2="auth=MSCHAPV2")
     if dev[0].get_status_field("tls_session_reused") != '0':
         raise Exception("Unexpected session resumption on the first connection")
 
@@ -6510,7 +6530,10 @@ def test_eap_peap_session_resumption(dev, apdev):
     ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=10)
     if ev is None:
         raise Exception("Key handshake with the AP timed out")
-    if dev[0].get_status_field("tls_session_reused") != '1':
+    reused = dev[0].get_status_field("tls_session_reused") == '1'
+    if phase2_auth and reused:
+        raise Exception("Session resumption used on the second connection")
+    if not phase2_auth and not reused:
         raise Exception("Session resumption not used on the second connection")
 
 def test_eap_peap_session_resumption_crypto_binding(dev, apdev):
