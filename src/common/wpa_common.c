@@ -17,6 +17,7 @@
 #include "crypto/aes_wrap.h"
 #include "crypto/crypto.h"
 #include "ieee802_11_defs.h"
+#include "ieee802_11_common.h"
 #include "defs.h"
 #include "wpa_common.h"
 
@@ -889,10 +890,11 @@ int wpa_ft_mic(int key_mgmt, const u8 *kck, size_t kck_len, const u8 *sta_addr,
 	       const u8 *rsnie, size_t rsnie_len,
 	       const u8 *ric, size_t ric_len,
 	       const u8 *rsnxe, size_t rsnxe_len,
+	       const struct wpabuf *extra,
 	       u8 *mic)
 {
-	const u8 *addr[10];
-	size_t len[10];
+	const u8 *addr[11];
+	size_t len[11];
 	size_t i, num_elem = 0;
 	u8 zero_mic[32];
 	size_t mic_len, fte_fixed_len;
@@ -970,6 +972,12 @@ int wpa_ft_mic(int key_mgmt, const u8 *kck, size_t kck_len, const u8 *sta_addr,
 		num_elem++;
 	}
 
+	if (extra) {
+		addr[num_elem] = wpabuf_head(extra);
+		len[num_elem] = wpabuf_len(extra);
+		num_elem++;
+	}
+
 	for (i = 0; i < num_elem; i++)
 		wpa_hexdump(MSG_MSGDUMP, "FT: MIC data", addr[i], len[i]);
 	res = -1;
@@ -1013,6 +1021,7 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
 			     struct wpa_ft_ies *parse, const u8 *opt)
 {
 	const u8 *end, *pos;
+	u8 link_id;
 
 	parse->ftie = ie;
 	parse->ftie_len = ie_len;
@@ -1077,6 +1086,51 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
 			wpa_printf(MSG_DEBUG, "FT: BIGTK");
 			parse->bigtk = pos;
 			parse->bigtk_len = len;
+			break;
+		case FTIE_SUBELEM_MLO_GTK:
+			if (len < 2 + 1 + 1 + 8) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO GTK in FTE");
+				return -1;
+			}
+			link_id = pos[2] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO GTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLO_LINKS)
+				break;
+			parse->valid_mlo_gtks |= BIT(link_id);
+			parse->mlo_gtk[link_id] = pos;
+			parse->mlo_gtk_len[link_id] = len;
+			break;
+		case FTIE_SUBELEM_MLO_IGTK:
+			if (len < 2 + 6 + 1 + 1) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO IGTK in FTE");
+				return -1;
+			}
+			link_id = pos[2 + 6] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO IGTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLO_LINKS)
+				break;
+			parse->valid_mlo_igtks |= BIT(link_id);
+			parse->mlo_igtk[link_id] = pos;
+			parse->mlo_igtk_len[link_id] = len;
+			break;
+		case FTIE_SUBELEM_MLO_BIGTK:
+			if (len < 2 + 6 + 1 + 1) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO BIGTK in FTE");
+				return -1;
+			}
+			link_id = pos[2 + 6] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO BIGTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLO_LINKS)
+				break;
+			parse->valid_mlo_bigtks |= BIT(link_id);
+			parse->mlo_bigtk[link_id] = pos;
+			parse->mlo_bigtk_len[link_id] = len;
 			break;
 		default:
 			wpa_printf(MSG_DEBUG, "FT: Unknown subelem id %u", id);
@@ -1151,16 +1205,25 @@ static int wpa_ft_parse_fte(int key_mgmt, const u8 *ie, size_t len,
 
 
 int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
-		     int key_mgmt)
+		     int key_mgmt, bool reassoc_resp)
 {
 	const u8 *end, *pos;
 	struct wpa_ie_data data;
 	int ret;
 	int prot_ie_count = 0;
+	const u8 *fte = NULL;
+	size_t fte_len = 0;
+	bool is_fte = false;
+	struct ieee802_11_elems elems;
 
 	os_memset(parse, 0, sizeof(*parse));
 	if (ies == NULL)
 		return 0;
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 0) == ParseFailed) {
+		wpa_printf(MSG_DEBUG, "FT: Failed to parse elements");
+		goto fail;
+	}
 
 	pos = ies;
 	end = ies + ies_len;
@@ -1171,6 +1234,10 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		len = *pos++;
 		if (len > end - pos)
 			break;
+
+		if (id != WLAN_EID_FAST_BSS_TRANSITION &&
+		    id != WLAN_EID_FRAGMENT)
+			is_fte = false;
 
 		switch (id) {
 		case WLAN_EID_RSN:
@@ -1183,7 +1250,7 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 			if (ret < 0) {
 				wpa_printf(MSG_DEBUG, "FT: Failed to parse "
 					   "RSN IE: %d", ret);
-				return -1;
+				goto fail;
 			}
 			parse->rsn_capab = data.capabilities;
 			if (data.num_pmkid == 1 && data.pmkid)
@@ -1203,7 +1270,7 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		case WLAN_EID_MOBILITY_DOMAIN:
 			wpa_hexdump(MSG_DEBUG, "FT: MDE", pos, len);
 			if (len < sizeof(struct rsn_mdie))
-				return -1;
+				goto fail;
 			parse->mdie = pos;
 			parse->mdie_len = len;
 			break;
@@ -1217,12 +1284,19 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 			 * using the struct rsn_ftie* definitions. */
 
 			if (len < 2)
-				return -1;
+				goto fail;
 			prot_ie_count = pos[1]; /* Element Count field in
 						 * MIC Control */
-
-			if (wpa_ft_parse_fte(key_mgmt, pos, len, parse) < 0)
-				return -1;
+			is_fte = true;
+			fte = pos;
+			fte_len = len;
+			break;
+		case WLAN_EID_FRAGMENT:
+			if (is_fte) {
+				wpa_hexdump(MSG_DEBUG, "FT: FTE fragment",
+					    pos, len);
+				fte_len += 2 + len;
+			}
 			break;
 		case WLAN_EID_TIMEOUT_INTERVAL:
 			wpa_hexdump(MSG_DEBUG, "FT: Timeout Interval",
@@ -1241,6 +1315,25 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		pos += len;
 	}
 
+	if (fte) {
+		int res;
+
+		if (fte_len < 255) {
+			res = wpa_ft_parse_fte(key_mgmt, fte, fte_len, parse);
+		} else {
+			parse->fte_buf = ieee802_11_defrag_data(fte, fte_len,
+								false);
+			if (!parse->fte_buf)
+				goto fail;
+			res = wpa_ft_parse_fte(key_mgmt,
+					       wpabuf_head(parse->fte_buf),
+					       wpabuf_len(parse->fte_buf),
+					       parse);
+		}
+		if (res < 0)
+			goto fail;
+	}
+
 	if (prot_ie_count == 0)
 		return 0; /* no MIC */
 
@@ -1248,24 +1341,39 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 	 * Check that the protected IE count matches with IEs included in the
 	 * frame.
 	 */
-	if (parse->rsn)
-		prot_ie_count--;
+	if (reassoc_resp && elems.basic_mle) {
+		unsigned int link_id;
+
+		/* TODO: This count should be done based on all _requested_,
+		 * not _accepted_ links. */
+		for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
+			if (parse->mlo_gtk[link_id]) {
+				if (parse->rsn)
+					prot_ie_count--;
+				if (parse->rsnxe)
+					prot_ie_count--;
+			}
+		}
+	} else {
+		if (parse->rsn)
+			prot_ie_count--;
+		if (parse->rsnxe)
+			prot_ie_count--;
+	}
 	if (parse->mdie)
 		prot_ie_count--;
 	if (parse->ftie)
 		prot_ie_count--;
-	if (parse->rsnxe)
-		prot_ie_count--;
 	if (prot_ie_count < 0) {
 		wpa_printf(MSG_DEBUG, "FT: Some required IEs not included in "
 			   "the protected IE count");
-		return -1;
+		goto fail;
 	}
 
 	if (prot_ie_count == 0 && parse->ric) {
 		wpa_printf(MSG_DEBUG, "FT: RIC IE(s) in the frame, but not "
 			   "included in protected IE count");
-		return -1;
+		goto fail;
 	}
 
 	/* Determine the end of the RIC IE(s) */
@@ -1281,11 +1389,25 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 	if (prot_ie_count) {
 		wpa_printf(MSG_DEBUG, "FT: %d protected IEs missing from "
 			   "frame", (int) prot_ie_count);
-		return -1;
+		goto fail;
 	}
 
 	return 0;
+
+fail:
+	wpa_ft_parse_ies_free(parse);
+	return -1;
 }
+
+
+void wpa_ft_parse_ies_free(struct wpa_ft_ies *parse)
+{
+	if (!parse)
+		return;
+	wpabuf_free(parse->fte_buf);
+	parse->fte_buf = NULL;
+}
+
 #endif /* CONFIG_IEEE80211R */
 
 

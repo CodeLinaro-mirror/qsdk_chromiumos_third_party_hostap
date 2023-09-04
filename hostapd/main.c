@@ -218,7 +218,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 #endif /* CONFIG_IEEE80211BE */
 
 	/* Initialize the driver interface */
-	if (!(b[0] | b[1] | b[2] | b[3] | b[4] | b[5]))
+	if (is_zero_ether_addr(b))
 		b = NULL;
 
 	os_memset(&params, 0, sizeof(params));
@@ -242,6 +242,15 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		break;
 	}
 	params.bssid = b;
+#ifdef CONFIG_IEEE80211BE
+	/*
+	 * Use the configured MLD MAC address as the interface hardware address
+	 * if this AP is a part of an AP MLD.
+	 */
+	if (!is_zero_ether_addr(hapd->conf->mld_addr) && hapd->conf->mld_ap)
+		params.bssid = hapd->conf->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+
 	params.ifname = hapd->conf->iface;
 	params.driver_params = hapd->iconf->driver_params;
 	params.use_pae_group_addr = hapd->conf->use_pae_group_addr;
@@ -270,14 +279,18 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 #ifdef CONFIG_IEEE80211BE
 	/*
 	 * This is the first interface added to the AP MLD, so have the
-	 * interface hardware address be the MLD address and set a link address
-	 * to this interface.
+	 * interface hardware address be the MLD address, while the link address
+	 * would be derived from the original interface address if BSSID is not
+	 * configured, and otherwise it would be the configured BSSID.
 	 */
 	if (hapd->conf->mld_ap) {
 		os_memcpy(hapd->mld_addr, hapd->own_addr, ETH_ALEN);
-		random_mac_addr_keep_oui(hapd->own_addr);
 		hapd->mld_next_link_id = 0;
 		hapd->mld_link_id = hapd->mld_next_link_id++;
+		if (!b)
+			random_mac_addr_keep_oui(hapd->own_addr);
+		else
+			os_memcpy(hapd->own_addr, b, ETH_ALEN);
 	}
 
 setup_mld:

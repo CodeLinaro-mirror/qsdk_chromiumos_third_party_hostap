@@ -120,6 +120,7 @@ struct wlantest_sta {
 	u32 rx_tid[16 + 1];
 
 	u16 sae_group;
+	u16 owe_group;
 };
 
 struct wlantest_tdls {
@@ -143,6 +144,8 @@ struct wlantest_bss {
 	struct dl_list list;
 	u8 bssid[ETH_ALEN];
 	u8 mld_mac_addr[ETH_ALEN];
+	u8 link_id;
+	bool link_id_set;
 	u16 capab_info;
 	u16 prev_capab_info;
 	u8 ssid[32];
@@ -293,6 +296,8 @@ void rx_data_80211_encap(struct wlantest *wt, const u8 *bssid,
 			 const u8 *data, size_t len);
 
 struct wlantest_bss * bss_find(struct wlantest *wt, const u8 *bssid);
+struct wlantest_bss * bss_find_mld(struct wlantest *wt, const u8 *mld_mac_addr,
+				   int link_id);
 struct wlantest_bss * bss_get(struct wlantest *wt, const u8 *bssid);
 void bss_deinit(struct wlantest_bss *bss);
 void bss_update(struct wlantest *wt, struct wlantest_bss *bss,

@@ -501,6 +501,7 @@
 #define WLAN_EID_EXT_EHT_CAPABILITIES 108
 #define WLAN_EID_EXT_TID_TO_LINK_MAPPING 109
 #define WLAN_EID_EXT_MULTI_LINK_TRAFFIC_INDICATION 110
+#define WLAN_EID_EXT_QOS_CHARACTERISTICS 113
 #define WLAN_EID_EXT_AKM_SUITE_SELECTOR 114
 
 /* Extended Capabilities field */
@@ -2768,6 +2769,39 @@ enum scs_request_type {
 	SCS_REQ_CHANGE = 2,
 };
 
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Table 9-404s (Direction subfield encoding)
+ */
+enum scs_direction {
+	SCS_DIRECTION_UP = 0,
+	SCS_DIRECTION_DOWN = 1,
+	SCS_DIRECTION_DIRECT = 2,
+};
+
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Figure 9-1001av (Control Info field format)
+ */
+#define EHT_QOS_CONTROL_INFO_DIRECTION_OFFSET		0
+#define EHT_QOS_CONTROL_INFO_TID_OFFSET			2
+#define EHT_QOS_CONTROL_INFO_USER_PRIORITY_OFFSET	6
+#define EHT_QOS_CONTROL_INFO_PRESENCE_MASK_OFFSET	9
+#define EHT_QOS_CONTROL_INFO_LINK_ID_OFFSET		25
+
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Presence Bitmap Of Additional Parameters
+ */
+#define SCS_QOS_BIT_MAX_MSDU_SIZE			((u16) BIT(0))
+#define SCS_QOS_BIT_SERVICE_START_TIME			((u16) BIT(1))
+#define SCS_QOS_BIT_SERVICE_START_TIME_LINKID		((u16) BIT(2))
+#define SCS_QOS_BIT_MEAN_DATA_RATE			((u16) BIT(3))
+#define SCS_QOS_BIT_DELAYED_BOUNDED_BURST_SIZE		((u16) BIT(4))
+#define SCS_QOS_BIT_MSDU_LIFETIME			((u16) BIT(5))
+#define SCS_QOS_BIT_MSDU_DELIVERY_INFO			((u16) BIT(6))
+#define SCS_QOS_BIT_MEDIUM_TIME				((u16) BIT(7))
+
 /* Optional subelement IDs for MSCS Descriptor element */
 enum mscs_description_subelem {
 	MCSC_SUBELEM_STATUS = 1,
@@ -2857,6 +2891,7 @@ enum dscp_policy_request_type {
 /* Wi-Fi Alliance Capabilities element - Capabilities field */
 #define WFA_CAPA_QM_DSCP_POLICY BIT(0)
 #define WFA_CAPA_QM_UNSOLIC_DSCP BIT(1)
+#define WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC BIT(2)
 
 struct ieee80211_neighbor_ap_info {
 	u8 tbtt_info_hdr;

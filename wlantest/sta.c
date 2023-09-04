@@ -38,6 +38,8 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
 	dl_list_for_each(sta, &bss->sta, struct wlantest_sta, list) {
 		if (os_memcmp(sta->addr, addr, ETH_ALEN) == 0)
 			return sta;
+		if (os_memcmp(sta->mld_mac_addr, addr, ETH_ALEN) == 0)
+			return sta;
 	}
 
 	if (is_zero_ether_addr(addr))
@@ -54,8 +56,14 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
 	dl_list_for_each(obss, &wt->bss, struct wlantest_bss, list) {
 		if (obss == bss)
 			continue;
+		if (!is_zero_ether_addr(bss->mld_mac_addr) &&
+		    os_memcmp(obss->mld_mac_addr, bss->mld_mac_addr,
+			      ETH_ALEN) != 0)
+			continue;
 		dl_list_for_each(sta, &obss->sta, struct wlantest_sta, list) {
 			if (os_memcmp(sta->addr, addr, ETH_ALEN) == 0)
+				return sta;
+			if (os_memcmp(sta->mld_mac_addr, addr, ETH_ALEN) == 0)
 				return sta;
 			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
 			     link_id++) {
@@ -89,8 +97,10 @@ struct wlantest_sta * sta_get(struct wlantest_bss *bss, const u8 *addr)
 	sta->bss = bss;
 	os_memcpy(sta->addr, addr, ETH_ALEN);
 	dl_list_add(&bss->sta, &sta->list);
-	wpa_printf(MSG_DEBUG, "Discovered new STA " MACSTR " in BSS " MACSTR,
-		   MAC2STR(sta->addr), MAC2STR(bss->bssid));
+	wpa_printf(MSG_DEBUG, "Discovered new STA " MACSTR " in BSS " MACSTR
+		   " (MLD " MACSTR ")",
+		   MAC2STR(sta->addr),
+		   MAC2STR(bss->bssid), MAC2STR(bss->mld_mac_addr));
 	return sta;
 }
 
@@ -335,6 +345,9 @@ void sta_new_ptk(struct wlantest *wt, struct wlantest_sta *sta,
 
 			if (!match)
 				continue;
+			if (os_memcmp(sta->bss->mld_mac_addr,
+				      osta->bss->mld_mac_addr, ETH_ALEN) != 0)
+				continue;
 			wpa_printf(MSG_DEBUG,
 				   "Add PTK to another MLO STA entry " MACSTR
 				   " (MLD " MACSTR " --> " MACSTR ") in BSS "
@@ -348,8 +361,6 @@ void sta_new_ptk(struct wlantest *wt, struct wlantest_sta *sta,
 			sta_copy_ptk(osta, ptk);
 			os_memcpy(osta->mld_mac_addr, sta->mld_mac_addr,
 				  ETH_ALEN);
-			os_memcpy(osta->bss->mld_mac_addr,
-				  sta->bss->mld_mac_addr, ETH_ALEN);
 		}
 	}
 }

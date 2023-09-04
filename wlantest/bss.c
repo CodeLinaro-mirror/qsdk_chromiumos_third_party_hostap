@@ -29,6 +29,22 @@ struct wlantest_bss * bss_find(struct wlantest *wt, const u8 *bssid)
 }
 
 
+struct wlantest_bss * bss_find_mld(struct wlantest *wt, const u8 *mld_mac_addr,
+				   int link_id)
+{
+	struct wlantest_bss *bss;
+
+	dl_list_for_each(bss, &wt->bss, struct wlantest_bss, list) {
+		if (os_memcmp(bss->mld_mac_addr, mld_mac_addr, ETH_ALEN) == 0 &&
+		    (link_id < 0 ||
+		     (bss->link_id_set && bss->link_id == link_id)))
+			return bss;
+	}
+
+	return NULL;
+}
+
+
 struct wlantest_bss * bss_get(struct wlantest *wt, const u8 *bssid)
 {
 	struct wlantest_bss *bss;
@@ -229,6 +245,29 @@ void bss_update(struct wlantest *wt, struct wlantest_bss *bss,
 		os_memcpy(bss->mdid, elems->mdie, 2);
 
 	bss->mesh = elems->mesh_id != NULL;
+
+	if (is_zero_ether_addr(bss->mld_mac_addr) &&
+	    elems->basic_mle && elems->basic_mle_len >= 2 + 1 + ETH_ALEN &&
+	    elems->basic_mle[2] >= 1 + ETH_ALEN) {
+		os_memcpy(bss->mld_mac_addr, &elems->basic_mle[2 + 1],
+			  ETH_ALEN);
+		wpa_printf(MSG_DEBUG,
+			   "Learned AP MLD MAC Address from Beacon/Probe Response frame: "
+			   MACSTR " (BSSID " MACSTR ")",
+			   MAC2STR(bss->mld_mac_addr), MAC2STR(bss->bssid));
+	}
+
+	if (!bss->link_id_set &&
+	    elems->basic_mle && elems->basic_mle_len >= 2 + 1 + ETH_ALEN + 1 &&
+	    elems->basic_mle[2] >= 1 + ETH_ALEN + 1 &&
+	    (WPA_GET_LE16(elems->basic_mle) &
+	     BASIC_MULTI_LINK_CTRL_PRES_LINK_ID)) {
+		    bss->link_id = elems->basic_mle[2 + 1 + ETH_ALEN] & 0x0f;
+		    wpa_printf(MSG_DEBUG,
+			       "Learned AP MLD Link ID %u for this affiliated link",
+			       bss->link_id);
+		    bss->link_id_set = true;
+	}
 
 	if (!update)
 		return;
