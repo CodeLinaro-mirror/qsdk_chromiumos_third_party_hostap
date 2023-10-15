@@ -132,6 +132,23 @@ static void pmksa_cache_reauth(void *eloop_ctx, void *timeout_ctx)
 	if (!pmksa->sm)
 		return;
 
+	if (pmksa->sm->driver_bss_selection) {
+		struct rsn_pmksa_cache_entry *entry;
+
+		entry = pmksa->sm->cur_pmksa ?
+			pmksa->sm->cur_pmksa :
+			pmksa_cache_get(pmksa, pmksa->sm->bssid, NULL, NULL,
+					NULL, 0);
+		if (entry && wpa_key_mgmt_sae(entry->akmp)) {
+			wpa_printf(MSG_DEBUG,
+				   "RSN: remove reauth threshold passed PMKSA from the driver for SAE");
+			entry->sae_reauth_scheduled = true;
+			wpa_sm_remove_pmkid(pmksa->sm, entry->network_ctx,
+					    entry->aa, entry->pmkid, NULL);
+			return;
+		}
+	}
+
 	pmksa->sm->cur_pmksa = NULL;
 	eapol_sm_request_reauth(pmksa->sm->eapol);
 }
@@ -178,7 +195,10 @@ static void pmksa_cache_set_expiration(struct rsn_pmksa_cache *pmksa)
 
 	entry = pmksa->sm->cur_pmksa ? pmksa->sm->cur_pmksa :
 		pmksa_cache_get(pmksa, pmksa->sm->bssid, NULL, NULL, NULL, 0);
-	if (entry && !wpa_key_mgmt_sae(entry->akmp)) {
+	if (entry &&
+	    (!wpa_key_mgmt_sae(entry->akmp) ||
+	     (pmksa->sm->driver_bss_selection &&
+	      !entry->sae_reauth_scheduled))) {
 		sec = pmksa->pmksa->reauth_time - now.sec;
 		if (sec < 0)
 			sec = 0;
@@ -611,12 +631,13 @@ void pmksa_cache_clear_current(struct wpa_sm *sm)
  * @network_ctx: Network configuration context
  * @try_opportunistic: Whether to allow opportunistic PMKSA caching
  * @fils_cache_id: Pointer to FILS Cache Identifier or %NULL if not used
+ * @associated: Whether the device is associated
  * Returns: 0 if PMKSA was found or -1 if no matching entry was found
  */
 int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 			    const u8 *bssid, void *network_ctx,
 			    int try_opportunistic, const u8 *fils_cache_id,
-			    int akmp)
+			    int akmp, bool associated)
 {
 	struct rsn_pmksa_cache *pmksa = sm->pmksa;
 	wpa_printf(MSG_DEBUG, "RSN: PMKSA cache search - network_ctx=%p "
@@ -654,13 +675,29 @@ int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 		if (wpa_key_mgmt_sae(sm->cur_pmksa->akmp) &&
 		    os_get_reltime(&now) == 0 &&
 		    sm->cur_pmksa->reauth_time < now.sec) {
-			wpa_printf(MSG_DEBUG,
-				   "RSN: Do not allow PMKSA cache entry for "
-				   MACSTR
-				   " to be used for SAE since its reauth threshold has passed",
-				   MAC2STR(sm->cur_pmksa->aa));
-			sm->cur_pmksa = NULL;
-			return -1;
+			/* Driver-based roaming might have used a PMKSA entry
+			 * that is already past the reauthentication threshold.
+			 * Remove the related PMKID from the driver to avoid
+			 * further uses for this PMKSA, but allow the
+			 * association to continue since the PMKSA has not yet
+			 * expired. */
+			wpa_sm_remove_pmkid(sm, sm->cur_pmksa->network_ctx,
+					    sm->cur_pmksa->aa,
+					    sm->cur_pmksa->pmkid, NULL);
+			if (associated) {
+				wpa_printf(MSG_DEBUG,
+					   "RSN: Associated with " MACSTR
+					   " using reauth threshold passed PMKSA cache entry",
+					   MAC2STR(sm->cur_pmksa->aa));
+			} else {
+				wpa_printf(MSG_DEBUG,
+					   "RSN: Do not allow PMKSA cache entry for "
+					   MACSTR
+					   " to be used for SAE since its reauth threshold has passed",
+					   MAC2STR(sm->cur_pmksa->aa));
+				sm->cur_pmksa = NULL;
+				return -1;
+			}
 		}
 
 		wpa_hexdump(MSG_DEBUG, "RSN: PMKSA cache entry found - PMKID",
