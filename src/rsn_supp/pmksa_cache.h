@@ -45,6 +45,13 @@ struct rsn_pmksa_cache_entry {
 	void *network_ctx;
 	int opportunistic;
 	bool external;
+
+	/**
+	 * This field is used to avoid duplicate pmksa_cache_reauth() calls for
+	 * every 10 minutes during the periodic expiration check of the current
+	 * PMKSA for SAE.
+	 */
+	bool sae_reauth_scheduled;
 };
 
 struct rsn_pmksa_cache;
@@ -86,7 +93,7 @@ void pmksa_cache_clear_current(struct wpa_sm *sm);
 int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 			    const u8 *bssid, void *network_ctx,
 			    int try_opportunistic, const u8 *fils_cache_id,
-			    int akmp);
+			    int akmp, bool associated);
 struct rsn_pmksa_cache_entry *
 pmksa_cache_get_opportunistic(struct rsn_pmksa_cache *pmksa,
 			      void *network_ctx, const u8 *aa, int akmp);
@@ -164,7 +171,7 @@ static inline int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 					  void *network_ctx,
 					  int try_opportunistic,
 					  const u8 *fils_cache_id,
-					  int akmp)
+					  int akmp, bool associated)
 {
 	return -1;
 }

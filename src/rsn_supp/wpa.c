@@ -4073,6 +4073,8 @@ static void wpa_sm_clear_ptk(struct wpa_sm *sm)
 	os_memset(&sm->gtk_wnm_sleep, 0, sizeof(sm->gtk_wnm_sleep));
 	os_memset(&sm->igtk, 0, sizeof(sm->igtk));
 	os_memset(&sm->igtk_wnm_sleep, 0, sizeof(sm->igtk_wnm_sleep));
+	os_memset(&sm->bigtk, 0, sizeof(sm->bigtk));
+	os_memset(&sm->bigtk_wnm_sleep, 0, sizeof(sm->bigtk_wnm_sleep));
 	sm->tk_set = false;
 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
 		os_memset(&sm->mlo.links[i].gtk, 0,
@@ -4083,6 +4085,10 @@ static void wpa_sm_clear_ptk(struct wpa_sm *sm)
 			  sizeof(sm->mlo.links[i].igtk));
 		os_memset(&sm->mlo.links[i].igtk_wnm_sleep, 0,
 			  sizeof(sm->mlo.links[i].igtk_wnm_sleep));
+		os_memset(&sm->mlo.links[i].bigtk, 0,
+			  sizeof(sm->mlo.links[i].bigtk));
+		os_memset(&sm->mlo.links[i].bigtk_wnm_sleep, 0,
+			  sizeof(sm->mlo.links[i].bigtk_wnm_sleep));
 	}
 }
 
@@ -6504,4 +6510,12 @@ void wpa_sm_set_cur_pmksa(struct wpa_sm *sm,
 {
 	if (sm)
 		sm->cur_pmksa = entry;
+}
+
+
+void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
+				     bool driver_bss_selection)
+{
+	if (sm)
+		sm->driver_bss_selection = driver_bss_selection;
 }

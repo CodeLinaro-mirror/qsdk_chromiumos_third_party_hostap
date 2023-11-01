@@ -3310,7 +3310,7 @@ static u8 * wpas_populate_assoc_ies(
 #endif /* CONFIG_FILS */
 		if (pmksa_cache_set_current(wpa_s->wpa, NULL, addr,
 					    ssid, try_opportunistic,
-					    cache_id, 0) == 0) {
+					    cache_id, 0, false) == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
 #if defined(CONFIG_SAE) || defined(CONFIG_FILS)
 			pmksa_cached = 1;
@@ -7171,6 +7171,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_PASN
 	wpa_pasn_sm_set_caps(wpa_s->wpa, wpa_s->drv_flags2);
 #endif /* CONFIG_PASN */
+	wpa_sm_set_driver_bss_selection(wpa_s->wpa,
+					!!(wpa_s->drv_flags &
+					   WPA_DRIVER_FLAGS_BSS_SELECTION));
 	if (wpa_s->max_remain_on_chan == 0)
 		wpa_s->max_remain_on_chan = 1000;
 

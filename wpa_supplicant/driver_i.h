@@ -354,8 +354,9 @@ static inline int wpa_drv_sta_add(struct wpa_supplicant *wpa_s,
 				  struct hostapd_sta_add_params *params)
 {
 	if (wpa_s->driver->sta_add) {
-		/* Set link_id to -1 as it's needed for AP only */
-		params->mld_link_id = -1;
+		/* Set link_id to -1 for non-TDLS peers */
+		if (!(params->flags & WPA_STA_TDLS_PEER))
+			params->mld_link_id = -1;
 		return wpa_s->driver->sta_add(wpa_s->drv_priv, params);
 	}
 	return -1;
@@ -585,13 +586,14 @@ static inline int wpa_drv_send_tdls_mgmt(struct wpa_supplicant *wpa_s,
 					 const u8 *dst, u8 action_code,
 					 u8 dialog_token, u16 status_code,
 					 u32 peer_capab, int initiator,
-					 const u8 *buf, size_t len)
+					 const u8 *buf, size_t len, int link_id)
 {
 	if (wpa_s->driver->send_tdls_mgmt) {
 		return wpa_s->driver->send_tdls_mgmt(wpa_s->drv_priv, dst,
 						     action_code, dialog_token,
 						     status_code, peer_capab,
-						     initiator, buf, len);
+						     initiator, buf, len,
+						     link_id);
 	}
 	return -1;
 }

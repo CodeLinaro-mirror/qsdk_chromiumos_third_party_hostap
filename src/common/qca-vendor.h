@@ -1241,6 +1241,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_TDLS_DISC_RSP_EXT = 231,
 	/* 232 - reserved for QCA */
 	QCA_NL80211_VENDOR_SUBCMD_TX_LATENCY = 233,
+	/* 234 - reserved for QCA */
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -1452,6 +1453,23 @@ enum qca_wlan_vendor_attr {
 	 * QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE if both attributes are included.
 	 */
 	QCA_WLAN_VENDOR_ATTR_SETBAND_MASK = 43,
+
+	/* Unsigned 8-bit used by QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES.
+	 * This field describes the maximum number of links supported by the
+	 * chip for MLO association.
+	 * This is an optional attribute.
+	 */
+	QCA_WLAN_VENDOR_ATTR_MLO_CAPABILITY_MAX_ASSOCIATION_COUNT = 44,
+
+	/* Unsigned 8-bit used by QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES.
+	 * This field describes the maximum number of Simultaneous Transmit
+	 * and Receive (STR) links used in Multi-Link Operation.
+	 * The maximum number of STR links used can be different
+	 * from the maximum number of radios supported by the chip.
+	 * This is a static configuration of the chip.
+	 * This is an optional attribute.
+	 */
+	QCA_WLAN_VENDOR_ATTR_MLO_CAPABILITY_MAX_STR_LINK_COUNT = 45,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_AFTER_LAST,
@@ -2454,9 +2472,11 @@ enum qca_wlan_vendor_attr_config {
 	 * used to calculate statistics like average the TSF offset or average
 	 * number of frame leaked.
 	 * For instance, upon Beacon frame reception:
-	 * current_avg = ((beacon_TSF - TBTT) * factor + previous_avg * (0x10000 - factor) ) / 0x10000
+	 * current_avg = ((beacon_TSF - TBTT) * factor +
+	 *                previous_avg * (0x10000 - factor)) / 0x10000
 	 * For instance, when evaluating leaky APs:
-	 * current_avg = ((num frame received within guard time) * factor + previous_avg * (0x10000 - factor)) / 0x10000
+	 * current_avg = ((num frame received within guard time) * factor +
+	 *                previous_avg * (0x10000 - factor)) / 0x10000
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_STATS_AVG_FACTOR = 2,
 	/* Unsigned 32-bit value to configure guard time, i.e., when
@@ -3149,21 +3169,7 @@ enum qca_wlan_vendor_attr_config {
 	 * %QCA_WLAN_VENDOR_ATTR_CONFIG_MLO_LINKS to specify the maximum
 	 * supported channel width update type per-MLO link.
 	 *
-	 * valid values:
-	 * 0 - The maximum allowed bandwidth change is applicable for both Tx
-	 *	and Rx paths. The driver shall conduct OMI operation as defined
-	 *	in 26.9 (Operating mode indication) or OMN operation as
-	 *	defined in 11.40 (Notification of operating mode
-	 *	changes) in IEEE P802.11-REVme/D2.0 with AP to indicate the
-	 *	change in the maximum allowed operating bandwidth.
-	 * 1 - Limit the change in maximum allowed bandwidth only to Tx path.
-	 *	In this case the driver doesn't need to conduct OMI/OMN
-	 *	operation since %QCA_WLAN_VENDOR_ATTR_CONFIG_CHANNEL_WIDTH is
-	 *	expected to be less than the current connection maximum
-	 *	negotiated bandwidth.
-	 *	For example: Negotiated maximum bandwidth is 160 MHz and the new
-	 *	maximum bandwidth configured is 80 MHz, now the driver limits
-	 *	the maximum bandwidth to 80 MHz only in the Tx path.
+	 * Uses enum qca_chan_width_update_type values.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_CHAN_WIDTH_UPDATE_TYPE = 96,
 
@@ -3279,6 +3285,19 @@ enum qca_wlan_vendor_attr_config {
 	 * This attribute is used for testing purposes.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_TTLM_NEGOTIATION_SUPPORT = 104,
+
+	/* 8-bit unsigned value.
+	 *
+	 * This attribute configures a traffic shaping mode
+	 * applied during coex scenarios.
+	 * By default all coex traffic shaping modes are enabled,
+	 * i.e., shape WLAN traffic based on coex traffic pattern and priority.
+	 * To shape traffic, STA may enter in power save mode
+	 * and AP may send CTS-to-self frame.
+	 *
+	 * Uses enum qca_coex_traffic_shaping_mode values.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_COEX_TRAFFIC_SHAPING_MODE = 105,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -4405,16 +4424,16 @@ enum qca_wlan_vendor_attr_ll_stats_set {
  * statistics depending on the peer_mac.
  */
 enum qca_wlan_ll_stats_clr_req_bitmap {
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO = 		BIT(0),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_CCA = 		BIT(1),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_CHANNELS = 	BIT(2),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_SCAN = 		BIT(3),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE = 		BIT(4),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_TXRATE = 	BIT(5),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_AC = 		BIT(6),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO =		BIT(0),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_CCA =		BIT(1),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_CHANNELS =	BIT(2),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_RADIO_SCAN =		BIT(3),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE =		BIT(4),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_TXRATE =		BIT(5),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_AC =		BIT(6),
 	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_CONTENTION =	BIT(7),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_ALL_PEER = 	BIT(8),
-	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_PER_PEER = 	BIT(9),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_ALL_PEER =	BIT(8),
+	QCA_WLAN_LL_STATS_CLR_REQ_BITMAP_IFACE_PER_PEER =	BIT(9),
 };
 
 enum qca_wlan_vendor_attr_ll_stats_clr {
@@ -4455,8 +4474,8 @@ enum qca_wlan_vendor_attr_ll_stats_clr {
 enum qca_wlan_ll_stats_get_req_bitmap {
 	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_RADIO =	BIT(0),
 	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_IFACE =	BIT(1),
-	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_ALL_PEER = 	BIT(2),
-	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_PER_PEER = 	BIT(3),
+	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_ALL_PEER =	BIT(2),
+	QCA_WLAN_LL_STATS_GET_REQ_BITMAP_PER_PEER =	BIT(3),
 };
 
 enum qca_wlan_vendor_attr_ll_stats_get {
@@ -5853,7 +5872,7 @@ enum qca_vendor_attr_roam_control {
 	QCA_ATTR_ROAM_CONTROL_ENABLE = 1,
 	QCA_ATTR_ROAM_CONTROL_STATUS = 2,
 	QCA_ATTR_ROAM_CONTROL_CLEAR_ALL = 3,
-	QCA_ATTR_ROAM_CONTROL_FREQ_LIST_SCHEME= 4,
+	QCA_ATTR_ROAM_CONTROL_FREQ_LIST_SCHEME = 4,
 	QCA_ATTR_ROAM_CONTROL_SCAN_PERIOD = 5,
 	QCA_ATTR_ROAM_CONTROL_FULL_SCAN_PERIOD = 6,
 	QCA_ATTR_ROAM_CONTROL_TRIGGERS = 7,
@@ -9223,6 +9242,16 @@ enum qca_wlan_ttlm_negotiation_support {
 };
 
 /**
+ * enum qca_coex_traffic_shaping_mode: Coex traffic shaping mode
+ * @QCA_COEX_TRAFFIC_SHAPING_MODE_DISABLE: Coex policies disabled
+ * @QCA_COEX_TRAFFIC_SHAPING_MODE_ENABLE: All coex policies enabled
+ */
+enum qca_coex_traffic_shaping_mode {
+	QCA_COEX_TRAFFIC_SHAPING_MODE_DISABLE = 0,
+	QCA_COEX_TRAFFIC_SHAPING_MODE_ENABLE = 1,
+};
+
+/**
  * enum qca_wlan_vendor_attr_omi_tx: Represents attributes for HE and
  * EHT operating mode control transmit request. These attributes are
  * sent as part of QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_OMI_TX and
@@ -11984,6 +12013,12 @@ enum qca_wlan_vendor_attr_add_sta_node_params {
 	 */
 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_AUTH_ALGO = 2,
 
+	/*
+	 * This flag attribute is set if the node being added is an
+	 * MLD STA node.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_IS_ML = 3,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_PARAM_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_PARAM_MAX =
@@ -12234,7 +12269,7 @@ enum qca_vendor_wlan_sta_guard_interval {
  * the disconnected state.
  *
  * @QCA_WLAN_VENDOR_ATTR_GET_STA_INFO_TARGET_POWER_5G_MCS0: u32, used in the
- * STA mode. This represents the Target power in dBm for for transmissions done
+ * STA mode. This represents the Target power in dBm for transmissions done
  * to the AP in 5 GHz at MCS0 rate. This data is maintained per connect session.
  * Represents the count of last connected session, when queried in the
  * disconnected state.
@@ -12572,7 +12607,7 @@ enum qca_wlan_tspec_direction {
 };
 
 /**
- * enum qca_wlan_tspec_ack_policy - MAC acknowledgement policy in TSPEC
+ * enum qca_wlan_tspec_ack_policy - MAC acknowledgment policy in TSPEC
  * As what is defined in IEEE Std 802.11-2016, Table 9-141.
  *
  * Values for %QCA_WLAN_VENDOR_ATTR_CONFIG_TSPEC_ACK_POLICY.
@@ -13382,25 +13417,37 @@ enum qca_wlan_vendor_attr_roam_stats_scan_chan_info {
  * enum qca_wlan_roam_stats_frame_subtype - Roam frame subtypes. These values
  * are used by the attribute %QCA_WLAN_VENDOR_ATTR_ROAM_STATS_FRAME_SUBTYPE.
  *
- * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_PREAUTH: Pre-authentication frame
- * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC: Reassociation frame
+ * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_AUTH_RESP: Authentication Response frame
+ * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC_RESP: Reassociation Response frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M1: EAPOL-Key M1 frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M2: EAPOL-Key M2 frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M3: EAPOL-Key M3 frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M4: EAPOL-Key M4 frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_GTK_M1: EAPOL-Key GTK M1 frame
  * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_GTK_M2: EAPOL-Key GTK M2 frame
+ * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_AUTH_REQ: Authentication Request frame
+ * @QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC_REQ: Reassociation Request frame
  */
 enum qca_wlan_roam_stats_frame_subtype {
-	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_PREAUTH = 1,
-	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC = 2,
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_AUTH_RESP = 1,
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC_RESP = 2,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M1 = 3,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M2 = 4,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M3 = 5,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_M4 = 6,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_GTK_M1 = 7,
 	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_EAPOL_GTK_M2 = 8,
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_AUTH_REQ = 9,
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC_REQ = 10,
 };
+
+/* Compatibility defines for previously used names.
+ * These values should not be used in any new implementation.
+ */
+#define QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_PREAUTH \
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_AUTH_RESP
+#define QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC \
+	QCA_WLAN_ROAM_STATS_FRAME_SUBTYPE_REASSOC_RESP
 
 /**
  * enum roam_frame_status - Specifies the valid values the vendor roam frame
@@ -13438,6 +13485,13 @@ enum qca_wlan_vendor_attr_roam_stats_frame_info {
 	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_FRAME_TIMESTAMP = 3,
 	/* Attribute used for padding for 64-bit alignment */
 	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_FRAME_PAD = 4,
+	/* This attribute indicates a 6-byte MAC address representing
+	 * the BSSID of the AP.
+	 * For non-MLO scenario, it indicates the AP BSSID.
+	 * For MLO scenario, it indicates the AP BSSID which may be the primary
+	 * link BSSID or a nonprimary link BSSID.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_FRAME_BSSID = 5,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ROAM_STATS_FRAME_INFO_AFTER_LAST,
@@ -14102,7 +14156,7 @@ enum qca_wlan_vendor_attr_roam_events {
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ROAM_EVENTS_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_ROAM_EVENTS_MAX =
-	QCA_WLAN_VENDOR_ATTR_ROAM_EVENTS_AFTER_LAST -1,
+	QCA_WLAN_VENDOR_ATTR_ROAM_EVENTS_AFTER_LAST - 1,
 };
 
 /**
@@ -16004,7 +16058,6 @@ enum qca_wlan_vendor_attr_tid_to_link_map {
  * A bitmap of the removed setup links link IDs.
  */
 enum qca_wlan_vendor_attr_link_reconfig {
-
 	QCA_WLAN_VENDOR_ATTR_LINK_RECONFIG_INVALID = 0,
 	QCA_WLAN_VENDOR_ATTR_LINK_RECONFIG_AP_MLD_ADDR = 1,
 	QCA_WLAN_VENDOR_ATTR_LINK_RECONFIG_REMOVED_LINKS = 2,
@@ -16246,9 +16299,9 @@ enum qca_wlan_vendor_attr_tdls_state {
  * @QCA_WLAN_VENDOR_OPM_MODE_DISABLE: OPM Disabled
  * @QCA_WLAN_VENDOR_OPM_MODE_ENABLE: OPM Enabled
  * @QCA_WLAN_VENDOR_OPM_MODE_USER_DEFINED: User defined mode which allows user
- * 	to configure power save inactivity timeout and speculative wake up
- * 	interval through %QCA_WLAN_VENDOR_ATTR_CONFIG_OPM_ITO and
- * 	%QCA_WLAN_VENDOR_ATTR_CONFIG_OPM_SPEC_WAKE_INTERVAL attributes.
+ *	to configure power save inactivity timeout and speculative wake up
+ *	interval through %QCA_WLAN_VENDOR_ATTR_CONFIG_OPM_ITO and
+ *	%QCA_WLAN_VENDOR_ATTR_CONFIG_OPM_SPEC_WAKE_INTERVAL attributes.
  */
 
 enum qca_wlan_vendor_opm_mode {
@@ -16403,7 +16456,7 @@ enum qca_wlan_vendor_tx_latency_action {
  *	The driver will monitor the transmit latency for the active links
  *	and save the statistics for each cycle (period is set by
  *	%QCA_WLAN_VENDOR_ATTR_TX_LATENCY_PERIOD) when the feature is enabled.
- * 	Set flag %QCA_WLAN_VENDOR_ATTR_TX_LATENCY_PERIODIC_REPORT if periodical
+ *	Set flag %QCA_WLAN_VENDOR_ATTR_TX_LATENCY_PERIODIC_REPORT if periodical
  *	report is required.
  *
  * 2) used as a command to disable the feature
@@ -16508,6 +16561,42 @@ enum qca_wlan_vendor_attr_tx_latency {
 	QCA_WLAN_VENDOR_ATTR_TX_LATENCY_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_TX_LATENCY_MAX =
 	QCA_WLAN_VENDOR_ATTR_TX_LATENCY_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_chan_width_update_type - Represents the possible values for
+ * %QCA_WLAN_VENDOR_ATTR_CONFIG_CHAN_WIDTH_UPDATE_TYPE.
+ *
+ * @QCA_CHAN_WIDTH_UPDATE_TYPE_TX_RX: The maximum allowed bandwidth change is
+ * applicable for both Tx and Rx paths. The driver shall conduct OMI operation
+ * as defined in 26.9 (Operating mode indication) or OMN operation as defined in
+ * 11.40 (Notification of operating mode changes) in IEEE P802.11-REVme/D2.0
+ * with AP to indicate the change in the maximum allowed operating bandwidth.
+ *
+ * @QCA_CHAN_WIDTH_UPDATE_TYPE_TX_ONLY: Limit the change in maximum allowed
+ * bandwidth only to Tx path. In this case the driver doesn't need to conduct
+ * OMI/OMN operation since %QCA_WLAN_VENDOR_ATTR_CONFIG_CHANNEL_WIDTH is
+ * expected to be less than the current connection maximum negotiated bandwidth.
+ * For example: Negotiated maximum bandwidth is 160 MHz and the new maximum
+ * bandwidth configured is 80 MHz, now the driver limits the maximum bandwidth
+ * to 80 MHz only in the Tx path.
+ *
+ * @QCA_CHAN_WIDTH_UPDATE_TYPE_TX_RX_EXT: This is similar to
+ * %QCA_CHAN_WIDTH_UPDATE_TYPE_TX_RX but the driver doesn't change current
+ * phymode bandwidth to avoid interoperability issues with APs which don't
+ * handle the maximum bandwidth change indication correctly.
+ * For example: Negotiated maximum bandwidth is 40 MHz and the new maximum
+ * bandwidth configured is 20 MHz, now the driver indicates the change in
+ * maximum allowed bandwidth to the AP and limits the bandwidth to 20 MHz in the
+ * Tx path but keeps the phymode bandwidth as 40 MHz. This will avoid
+ * interoperability issues with APs which still use 40 MHz for sending the
+ * frames though it received maximum allowed bandwidth indication as 20 MHz
+ * from the STA.
+ */
+enum qca_chan_width_update_type {
+	QCA_CHAN_WIDTH_UPDATE_TYPE_TX_RX = 0,
+	QCA_CHAN_WIDTH_UPDATE_TYPE_TX_ONLY = 1,
+	QCA_CHAN_WIDTH_UPDATE_TYPE_TX_RX_EXT = 2,
 };
 
 #endif /* QCA_VENDOR_H */
