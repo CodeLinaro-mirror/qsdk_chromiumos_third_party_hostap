@@ -2033,16 +2033,8 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	double adjust_factor, est_ratio;
 	unsigned int cur_est, sel_est;
 	struct wpa_signal_info si;
-	int cur_snr = 0, sel_snr = 0;
+	int cur_snr = 0;
 	int ret = 0;
-	int rssi_bump = 0, noise_bump = 0;
-
-	const u8 *cur_ies = wpa_bss_ie_ptr(current_bss);
-	const u8 *sel_ies = wpa_bss_ie_ptr(selected);
-	size_t cur_ie_len = current_bss->ie_len ? current_bss->ie_len :
-			    current_bss->beacon_ie_len;
-	size_t sel_ie_len = selected->ie_len ? selected->ie_len :
-			    selected->beacon_ie_len;
 
 	wpa_dbg(wpa_s, MSG_INFO, "Considering within-ESS reassociation");
 	wpa_dbg(wpa_s, MSG_INFO, "Current BSS: " MACSTR
@@ -2063,6 +2055,10 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		return 1;
 	}
 
+	cur_level = current_bss->level;
+	cur_est = current_bss->est_throughput;
+	sel_est = selected->est_throughput;
+
 	/*
 	 * Try to poll the signal from the driver since this will allow to get
 	 * more accurate values. In some cases, there can be big differences
@@ -2080,14 +2076,8 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	 */
 	if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
 	    (si.data.avg_beacon_signal || si.data.avg_signal)) {
-		/*
-		 * Normalize avg_signal to the RSSI over 20 MHz, as the
-		 * throughput is estimated based on the RSSI over 20 MHz
-		 */
 		cur_level = si.data.avg_beacon_signal ?
-			    si.data.avg_beacon_signal : (si.data.avg_signal -
-			    wpas_channel_width_rssi_bump(cur_ies, cur_ie_len,
-							 si.chanwidth));
+			si.data.avg_beacon_signal : si.data.avg_signal;
 		cur_snr = wpas_get_snr_signal_info(si.frequency, cur_level,
 						   si.current_noise);
 
@@ -2097,26 +2087,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_INFO,
 			"Using signal poll values for the current BSS: level=%d snr=%d est_throughput=%u",
 			cur_level, cur_snr, cur_est);
-	} else {
-		/* level and snr are measured over 20 MHz channel */
-		cur_level = current_bss->level;
-		cur_snr = current_bss->snr;
-		cur_est = current_bss->est_throughput;
 	}
-	/*
-	 * Adjust the SNR of BSSes based on the channel width.
-	 */
-	cur_level += wpas_channel_width_rssi_bump(cur_ies, cur_ie_len,
-						  current_bss->max_cw);
-	cur_snr = wpas_adjust_snr_by_chanwidth(cur_ies, cur_ie_len,
-					       current_bss->max_cw, cur_snr);
-
-	sel_est = selected->est_throughput;
-	sel_level = selected->level +
-		    wpas_channel_width_rssi_bump(sel_ies, sel_ie_len,
-						 selected->max_cw);
-	sel_snr = wpas_adjust_snr_by_chanwidth(sel_ies, sel_ie_len,
-					       selected->max_cw, selected->snr);
 
 	/*
 	 * Short-circuit the roaming heuristic to bias toward association on
@@ -2130,7 +2101,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		}
 	} else if (is_6ghz_freq(selected->freq) &&
 		   !is_6ghz_freq(current_bss->freq)) {
-		if (sel_snr >= GREAT_SNR + 3) {
+		if (selected->snr >= GREAT_SNR + 3) {
 			wpa_dbg(wpa_s, MSG_INFO, "Allow roam - bias toward 6GHz");
 			return 1;
 		}
@@ -2150,7 +2121,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		else if (temp_level > high_rssi)
 			temp_level = high_rssi;
 		min_diff = min_diff_offset + temp_level / rssi_bucket_size;
-		adjust_factor = adjust_factor_offset +
+		adjust_factor = adjust_factor_offset + 
 				temp_level / rssi_bucket_size;
 	} else { /* unspecified units (not in dBm) */
 		min_diff = default_min_diff;
@@ -2158,6 +2129,8 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	}
 	adjust_factor *= adjust_factor_step;
 
+	sel_est = selected->est_throughput;
+	sel_level = selected->level;
 	if (cur_est > sel_est) {
 		adjust = 1;
 		est_ratio = sel_est == 0 ? max_est_ratio :
@@ -2185,7 +2158,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	if (wpa_s->signal_threshold && cur_level <= wpa_s->signal_threshold &&
 	    sel_level > wpa_s->signal_threshold)
 		min_diff -= 2;
-	diff = sel_level - cur_level;
+	diff = selected->level - cur_level;
 	if (diff < min_diff) {
 		wpa_dbg(wpa_s, MSG_INFO,
 			"Skip roam - too small difference in signal level (%d < %d)",
@@ -2204,7 +2177,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		     MAC2STR(current_bss->bssid),
 		     current_bss->freq, cur_level, cur_est,
 		     MAC2STR(selected->bssid),
-		     selected->freq, sel_level, sel_est);
+		     selected->freq, selected->level, sel_est);
 	return ret;
 }
 
