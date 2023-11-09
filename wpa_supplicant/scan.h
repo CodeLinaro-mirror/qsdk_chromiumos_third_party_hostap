@@ -45,8 +45,7 @@ void wpa_supplicant_notify_scanning(struct wpa_supplicant *wpa_s,
 				    int scanning);
 struct wpa_driver_scan_params;
 int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
-				struct wpa_driver_scan_params *params,
-				bool default_ies);
+				struct wpa_driver_scan_params *params);
 struct wpa_scan_results *
 wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
 				struct scan_info *info, int new_scan);
@@ -95,6 +94,5 @@ int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 			    struct wpa_driver_scan_params *params,
 			    bool is_6ghz, bool only_6ghz_psc,
 			    bool exclude_radar);
-struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s);
 
 #endif /* SCAN_H */
