@@ -13,15 +13,11 @@ emerge-${BOARD} wpa_supplicant-cros
 cros deploy ${DUT} wpa_supplicant-cros
 ```
 
-Note that when an uprev is not in progress, `wpa_supplicant-cros/current` and
-`wpa_supplicant-cros/next` point to the same branch and you can choose to
-develop on either of them. When an uprev is in progress, you should develop on
-`wpa_supplicant-cros/current` to ensure that boards see the changes you are
-making immediately, and cherry-pick all changes you've made to
-`wpa_supplicant-cros/next` to ensure that the will continue to carry those
-changes after the uprev happens. See
-[go/wpa-supplicant-cros-uprev](http://go/wpa-supplicant-cros-uprev) for our
-uprev process.
+Note that `wpa_supplicant-cros/current` and `wpa_supplicant-cros/next` are
+identical. This is a vestige of how we used to uprevs, but now that we've
+converted to [automated merges](http://go/cros-wpa-supplicant-merge-automation-readme),
+we no longer regularly use both directories other than for the occasional
+rollout of a new feature flag. Please develop in `wpa_supplicant-cros/current`.
 
 To restart wpa_supplicant after deploying:
 
@@ -68,16 +64,27 @@ indicate that you'd like internal feedback first. After getting a +1 from
 relevant reviewers, you should send the patch upstream. For time-sensitive
 changes, we allow landing the change as **FROMLIST** with an **UPSTREAM-TASK**
 tag at the end specifying a bug number to track the task of upstreaming the
-change. For other changes, we prefer landing the change as **UPSTREAM** or
-**BACKPORT** to avoid accruing technical debt.
+change. Please also add the
+[CrOSWiFi-PendingUpstreamReview](https://b.corp.google.com/hotlists/5433623)
+hotlist to the task and add the patch to
+[go/cros_supplicant_patches](http://go/cros_supplicant_patches). For other
+changes, we prefer landing the change as **UPSTREAM** or **BACKPORT** to avoid
+accruing technical debt.
 
 If you've landed your change as **FROMLIST**, make sure to monitor the hostap
 mailing list so you can revise your patch if necessary. After it has been
 accepted upstream, revert the original **FROMLIST** patch and land it as
 **UPSTREAM** (or **BACKPORT**) to update the change to its latest version if
-necessary, and make sure the git history clearly reflects that the **FROMLIST**
-patch has been reverted and the **UPSTREAM** (or **BACKPORT**)  patch has
-landed in its place.
+necessary. There's no need to do this if there is no diff between the
+**UPSTREAM** and **FROMLIST** patches. An easy way to do this is to run the
+following command:
+```bash
+diff <(git show ${FROMLIST_HASH}) <(git show ${UPSTREAM_HASH})
+```
+Note that there will always be diffs, but you can skip relanding as long as
+these diffs are part of the patch itself. Remember to close the task that was
+opened to track upstreaming, and remove the patch from
+[go/cros_supplicant_patches](http://go/cros_supplicant_patches).
 
 ## Contributing upstream
 
