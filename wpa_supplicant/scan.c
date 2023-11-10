@@ -2776,12 +2776,6 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 	struct hostapd_hw_modes *hw_mode;
 	unsigned int est, tmp;
 	const u8 *ie;
-	/*
-	 * No need to apply a bump to the noise here because the
-	 * minsnr_bitrate_entry tables are based on MCS tables where this has
-	 * been taken into account.
-	 */
-	int adjusted_snr;
 
 	/* Limit based on estimated SNR */
 	if (rate > 1 * 2 && snr < 1)
@@ -2843,10 +2837,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 		if (ie && ie[1] >= 2 &&
 		    (ie[3] & HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK)) {
 			*max_cw = CHAN_WIDTH_40;
-			adjusted_snr = snr +
-				wpas_channel_width_rssi_bump(ies, ies_len,
-							     CHAN_WIDTH_40);
-			tmp = max_ht40_rate(adjusted_snr, false);
+			tmp = max_ht40_rate(snr, false);
 			if (tmp > est)
 				est = tmp;
 		}
@@ -2868,10 +2859,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			    (ie[3] &
 			     HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK)) {
 				*max_cw = CHAN_WIDTH_40;
-				adjusted_snr = snr +
-					wpas_channel_width_rssi_bump(ies,
-							ies_len, CHAN_WIDTH_40);
-				tmp = max_ht40_rate(adjusted_snr, true) + 1;
+				tmp = max_ht40_rate(snr, true) + 1;
 				if (tmp > est)
 					est = tmp;
 			}
@@ -2898,10 +2886,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 
 			if (vht80) {
 				*max_cw = CHAN_WIDTH_80;
-				adjusted_snr = snr +
-					wpas_channel_width_rssi_bump(ies,
-							ies_len, CHAN_WIDTH_80);
-				tmp = max_vht80_rate(adjusted_snr) + 1;
+				tmp = max_vht80_rate(snr) + 1;
 				if (tmp > est)
 					est = tmp;
 			}
@@ -2911,10 +2896,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			     (VHT_CAP_SUPP_CHAN_WIDTH_160MHZ |
 			      VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ))) {
 				*max_cw = CHAN_WIDTH_160;
-				adjusted_snr = snr +
-					wpas_channel_width_rssi_bump(ies,
-						       ies_len, CHAN_WIDTH_160);
-				tmp = max_vht160_rate(adjusted_snr) + 1;
+				tmp = max_vht160_rate(snr) + 1;
 				if (tmp > est)
 					est = tmp;
 			}
@@ -2961,10 +2943,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			    *max_cw < CHAN_WIDTH_40) {
 				*max_cw = CHAN_WIDTH_40;
 			}
-			adjusted_snr = snr + wpas_channel_width_rssi_bump(ies,
-							ies_len, CHAN_WIDTH_40);
-			tmp = max_he_eht_rate(he40_table, adjusted_snr,
-					      is_eht) + boost;
+			tmp = max_he_eht_rate(he40_table, snr, is_eht) + boost;
 			if (tmp > est)
 				est = tmp;
 		}
@@ -2975,10 +2954,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			    *max_cw < CHAN_WIDTH_80) {
 				*max_cw = CHAN_WIDTH_80;
 			}
-			adjusted_snr = snr + wpas_channel_width_rssi_bump(ies,
-							ies_len, CHAN_WIDTH_80);
-			tmp = max_he_eht_rate(he80_table, adjusted_snr,
-					      is_eht) + boost;
+			tmp = max_he_eht_rate(he80_table, snr, is_eht) + boost;
 			if (tmp > est)
 				est = tmp;
 		}
@@ -2990,10 +2966,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			    *max_cw < CHAN_WIDTH_160) {
 				*max_cw = CHAN_WIDTH_160;
 			}
-			adjusted_snr = snr + wpas_channel_width_rssi_bump(ies,
-						       ies_len, CHAN_WIDTH_160);
-			tmp = max_he_eht_rate(he160_table, adjusted_snr,
-					      is_eht) + boost;
+			tmp = max_he_eht_rate(he160_table, snr, is_eht) + boost;
 			if (tmp > est)
 				est = tmp;
 		}
@@ -3010,9 +2983,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			    *max_cw < CHAN_WIDTH_320) {
 				*max_cw = CHAN_WIDTH_320;
 			}
-			adjusted_snr = snr + wpas_channel_width_rssi_bump(ies,
-						       ies_len, CHAN_WIDTH_320);
-			tmp = max_he_eht_rate(eht320_table, adjusted_snr, true);
+			tmp = max_he_eht_rate(eht320_table, snr, true);
 			if (tmp > est)
 				est = tmp;
 		}
