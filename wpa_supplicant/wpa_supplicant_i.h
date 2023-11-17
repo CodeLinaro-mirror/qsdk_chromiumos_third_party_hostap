@@ -904,6 +904,10 @@ struct wpa_supplicant {
 	unsigned int suitable_network;
 	unsigned int no_suitable_network;
 
+	u8 ml_probe_bssid[ETH_ALEN];
+	int ml_probe_mld_id;
+	u16 ml_probe_links;
+
 	u64 drv_flags;
 	u64 drv_flags2;
 	unsigned int drv_enc;
@@ -1570,6 +1574,15 @@ struct wpa_supplicant {
 	bool support_6ghz;
 
 	struct wpa_signal_info last_signal_info;
+
+	struct wpa_ssid *ml_connect_probe_ssid;
+	struct wpa_bss *ml_connect_probe_bss;
+
+#ifdef CONFIG_OWE
+	/* An array of frequencies to scan for OWE transition mode BSSs when
+	 * owe_transition_search == 1 */
+	int *owe_trans_scan_freq;
+#endif /* CONFIG_OWE */
 };
 
 
@@ -1690,7 +1703,8 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 		    size_t ssid_len);
 void wpas_request_connection(struct wpa_supplicant *wpa_s);
 void wpas_request_disconnection(struct wpa_supplicant *wpa_s);
-int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen);
+int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen,
+			 struct wpa_bss *bss);
 int wpas_update_random_addr(struct wpa_supplicant *wpa_s,
 			    enum wpas_mac_addr_style style,
 			    struct wpa_ssid *ssid);

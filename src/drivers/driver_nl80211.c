@@ -3284,6 +3284,7 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	__AKM(OWE, OWE);
 	__AKM(DPP, DPP);
 	__AKM(FT_IEEE8021X_SHA384, FT_802_1X_SHA384);
+	__AKM(IEEE8021X_SHA384, 802_1X_SHA384);
 #undef __AKM
 
 	return num_suites;
@@ -5109,6 +5110,19 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 			 suites))
 		goto fail;
 
+	if ((params->key_mgmt_suites & WPA_KEY_MGMT_PSK) &&
+	    (drv->capa.flags & WPA_DRIVER_FLAGS2_4WAY_HANDSHAKE_AP_PSK) &&
+	    params->psk_len &&
+	    nla_put(msg, NL80211_ATTR_PMK, params->psk_len, params->psk))
+		goto fail;
+
+	if (wpa_key_mgmt_sae(params->key_mgmt_suites) &&
+	    (drv->capa.flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP) &&
+	    params->sae_password &&
+	    nla_put(msg, NL80211_ATTR_SAE_PASSWORD,
+		    os_strlen(params->sae_password), params->sae_password))
+		goto fail;
+
 	if (params->key_mgmt_suites & WPA_KEY_MGMT_IEEE8021X_NO_WPA &&
 	    (!params->pairwise_ciphers ||
 	     params->pairwise_ciphers & (WPA_CIPHER_WEP104 | WPA_CIPHER_WEP40)) &&
@@ -6503,7 +6517,8 @@ retry:
 	if (params->key_mgmt_suite == WPA_KEY_MGMT_IEEE8021X ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_PSK ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_IEEE8021X_SHA256 ||
-	    params->key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256) {
+	    params->key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
+	    params->key_mgmt_suite == WPA_KEY_MGMT_IEEE8021X_SHA384) {
 		wpa_printf(MSG_DEBUG, "  * control port");
 		if (nla_put_flag(msg, NL80211_ATTR_CONTROL_PORT))
 			goto fail;
@@ -6753,8 +6768,12 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 
 		if (params->wpa_proto & WPA_PROTO_WPA)
 			ver |= NL80211_WPA_VERSION_1;
-		if (params->wpa_proto & WPA_PROTO_RSN)
-			ver |= NL80211_WPA_VERSION_2;
+		if (params->wpa_proto & WPA_PROTO_RSN) {
+			if (wpa_key_mgmt_sae(params->key_mgmt_suite))
+				ver |= NL80211_WPA_VERSION_3;
+			else
+				ver |= NL80211_WPA_VERSION_2;
+		}
 
 		wpa_printf(MSG_DEBUG, "  * WPA Versions 0x%x", ver);
 		if (nla_put_u32(msg, NL80211_ATTR_WPA_VERSIONS, ver))
@@ -6803,7 +6822,8 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_FILS_SHA256 ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_FILS_SHA384 ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_OWE ||
-	    params->key_mgmt_suite == WPA_KEY_MGMT_DPP) {
+	    params->key_mgmt_suite == WPA_KEY_MGMT_DPP ||
+	    params->key_mgmt_suite == WPA_KEY_MGMT_IEEE8021X_SHA384) {
 		u32 *mgmt;
 		unsigned int akm_count = 1, i;
 
@@ -6886,6 +6906,9 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 			break;
 		case WPA_KEY_MGMT_DPP:
 			mgmt[0] = RSN_AUTH_KEY_MGMT_DPP;
+			break;
+		case WPA_KEY_MGMT_IEEE8021X_SHA384:
+			mgmt[0] = RSN_AUTH_KEY_MGMT_802_1X_SHA384;
 			break;
 		case WPA_KEY_MGMT_PSK:
 		default:
@@ -7031,6 +7054,27 @@ static int wpa_driver_nl80211_try_connect(
 	     wpa_key_mgmt_sae(params->allowed_key_mgmts)) &&
 	    nl80211_put_sae_pwe(msg, params->sae_pwe) < 0)
 		goto fail;
+
+	/* Add SAE password in case of SAE authentication offload */
+	if ((params->sae_password || params->passphrase) &&
+	    (drv->capa.flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_STA)) {
+		const char *password;
+		size_t pwd_len;
+
+		if (params->sae_password && params->sae_password_id) {
+			wpa_printf(MSG_INFO,
+				   "nl80211: Use of SAE password identifiers not supported with driver-based SAE");
+			goto fail;
+		}
+
+		password = params->sae_password;
+		if (!password)
+			password = params->passphrase;
+		pwd_len = os_strlen(password);
+		wpa_printf(MSG_DEBUG, "  * SAE password");
+		if (nla_put(msg, NL80211_ATTR_SAE_PASSWORD, pwd_len, password))
+			goto fail;
+	}
 #endif /* CONFIG_SAE */
 
 	algs = 0;
@@ -7043,6 +7087,8 @@ static int wpa_driver_nl80211_try_connect(
 	if (params->auth_alg & WPA_AUTH_ALG_FILS)
 		algs++;
 	if (params->auth_alg & WPA_AUTH_ALG_FT)
+		algs++;
+	if (params->auth_alg & WPA_AUTH_ALG_SAE)
 		algs++;
 	if (algs > 1) {
 		wpa_printf(MSG_DEBUG, "  * Leave out Auth Type for automatic "
@@ -10820,6 +10866,7 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 				  "capa.enc=0x%x\n"
 				  "capa.auth=0x%x\n"
 				  "capa.flags=0x%llx\n"
+				  "capa.flags2=0x%llx\n"
 				  "capa.rrm_flags=0x%x\n"
 				  "capa.max_scan_ssids=%d\n"
 				  "capa.max_sched_scan_ssids=%d\n"
@@ -10844,6 +10891,7 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 				  drv->capa.enc,
 				  drv->capa.auth,
 				  (unsigned long long) drv->capa.flags,
+				  (unsigned long long) drv->capa.flags2,
 				  drv->capa.rrm_flags,
 				  drv->capa.max_scan_ssids,
 				  drv->capa.max_sched_scan_ssids,
@@ -11340,7 +11388,7 @@ static int nl80211_set_qos_map(void *priv, const u8 *qos_map_set,
 	wpa_hexdump(MSG_DEBUG, "nl80211: Setting QoS Map",
 		    qos_map_set, qos_map_set_len);
 
-	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_SET_QOS_MAP)) ||
+	if (!(msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_SET_QOS_MAP)) ||
 	    nla_put(msg, NL80211_ATTR_QOS_MAP, qos_map_set_len, qos_map_set)) {
 		nlmsg_free(msg);
 		return -ENOBUFS;
@@ -11609,6 +11657,15 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 	if (!addr)
 		addr = drv->perm_addr;
 
+	/*
+	 * Try to change the address first without setting the interface
+	 * down and then fall back to DOWN/set addr/UP if the first
+	 * attempt failed. This can reduce the interface setup time
+	 * significantly with some drivers.
+	 */
+	if (!linux_set_ifhwaddr(drv->global->ioctl_sock, bss->ifname, addr))
+		goto done;
+
 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 0) < 0)
 		return -1;
 
@@ -11625,17 +11682,18 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 		return -1;
 	}
 
-	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
-		   bss->ifname, MAC2STR(addr));
-	drv->addr_changed = new_addr;
-	os_memcpy(bss->prev_addr, bss->addr, ETH_ALEN);
-	os_memcpy(bss->addr, addr, ETH_ALEN);
-
 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1) < 0)
 	{
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Could not restore interface UP after set_mac_addr");
 	}
+
+done:
+	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
+		   bss->ifname, MAC2STR(addr));
+	drv->addr_changed = new_addr;
+	os_memcpy(bss->prev_addr, bss->addr, ETH_ALEN);
+	os_memcpy(bss->addr, addr, ETH_ALEN);
 
 	return 0;
 }

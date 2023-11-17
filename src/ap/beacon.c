@@ -17,6 +17,7 @@
 #include "common/ieee802_11_common.h"
 #include "common/hw_features_common.h"
 #include "common/wpa_ctrl.h"
+#include "crypto/sha1.h"
 #include "wps/wps_defs.h"
 #include "p2p/p2p.h"
 #include "hostapd.h"
@@ -87,6 +88,12 @@ static u8 ieee802_11_erp_info(struct hostapd_data *hapd)
 
 static u8 * hostapd_eid_ds_params(struct hostapd_data *hapd, u8 *eid)
 {
+	enum hostapd_hw_mode hw_mode = hapd->iconf->hw_mode;
+
+	if (hw_mode != HOSTAPD_MODE_IEEE80211G &&
+	    hw_mode != HOSTAPD_MODE_IEEE80211B)
+		return eid;
+
 	*eid++ = WLAN_EID_DS_PARAMS;
 	*eid++ = 1;
 	*eid++ = hapd->iconf->channel;
@@ -471,12 +478,21 @@ ieee802_11_build_ap_params_mbssid(struct hostapd_data *hapd,
 	size_t len, rnr_len = 0;
 	u8 elem_count = 0, *elem = NULL, **elem_offset = NULL, *end;
 	u8 rnr_elem_count = 0, *rnr_elem = NULL, **rnr_elem_offset = NULL;
+	size_t i;
 
 	if (!iface->mbssid_max_interfaces ||
 	    iface->num_bss > iface->mbssid_max_interfaces ||
 	    (iface->conf->mbssid == ENHANCED_MBSSID_ENABLED &&
 	     !iface->ema_max_periodicity))
 		goto fail;
+
+	/* Make sure bss->xrates_supported is set for all BSSs to know whether
+	 * it need to be non-inherited. */
+	for (i = 0; i < iface->num_bss; i++) {
+		u8 buf[100];
+
+		hostapd_eid_ext_supp_rates(iface->bss[i], buf);
+	}
 
 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
 	len = hostapd_eid_mbssid_len(tx_bss, WLAN_FC_STYPE_BEACON, &elem_count,
@@ -2011,6 +2027,50 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	resp = hostapd_probe_resp_offloads(hapd, &resp_len);
 #endif /* NEED_AP_MLME */
 
+	/* If key management offload is enabled, configure PSK to the driver. */
+	if (wpa_key_mgmt_wpa_psk_no_sae(hapd->conf->wpa_key_mgmt) &&
+	    (hapd->iface->drv_flags2 &
+	     WPA_DRIVER_FLAGS2_4WAY_HANDSHAKE_AP_PSK)) {
+		if (hapd->conf->ssid.wpa_psk && hapd->conf->ssid.wpa_psk_set) {
+			os_memcpy(params->psk, hapd->conf->ssid.wpa_psk->psk,
+				  PMK_LEN);
+			params->psk_len = PMK_LEN;
+		} else if (hapd->conf->ssid.wpa_passphrase &&
+			   pbkdf2_sha1(hapd->conf->ssid.wpa_passphrase,
+				       hapd->conf->ssid.ssid,
+				       hapd->conf->ssid.ssid_len, 4096,
+				       params->psk, PMK_LEN) == 0) {
+			params->psk_len = PMK_LEN;
+		}
+	}
+
+#ifdef CONFIG_SAE
+	/* If SAE offload is enabled, provide password to lower layer for
+	 * SAE authentication and PMK generation.
+	 */
+	if (wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) &&
+	    (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP)) {
+		if (hostapd_sae_pk_in_use(hapd->conf)) {
+			wpa_printf(MSG_ERROR,
+				   "SAE PK not supported with SAE offload");
+			return -1;
+		}
+
+		if (hostapd_sae_pw_id_in_use(hapd->conf)) {
+			wpa_printf(MSG_ERROR,
+				   "SAE Password Identifiers not supported with SAE offload");
+			return -1;
+		}
+
+		params->sae_password = sae_get_password(hapd, NULL, NULL, NULL,
+							NULL, NULL);
+		if (!params->sae_password) {
+			wpa_printf(MSG_ERROR, "SAE password not configured for offload");
+			return -1;
+		}
+	}
+#endif /* CONFIG_SAE */
+
 	params->head = (u8 *) head;
 	params->head_len = head_len;
 	params->tail = tail;
@@ -2248,6 +2308,12 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
 fail:
 	ieee802_11_free_ap_params(&params);
 	return ret;
+}
+
+
+void ieee802_11_set_beacon_per_bss_only(struct hostapd_data *hapd)
+{
+	__ieee802_11_set_beacon(hapd);
 }
 
 

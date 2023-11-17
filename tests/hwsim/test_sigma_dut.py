@@ -96,9 +96,9 @@ def sigma_dut_cmd(cmd, port=9000, timeout=2, dump_dev=None):
                     done = True
                     res = line
                     break
-                if running and not done:
-                    # Read the actual response
-                    res = sock.recv(1000).decode()
+            if running and not done:
+                # Read the actual response
+                res = sock.recv(1000).decode()
         except:
             res = ''
             pass
@@ -164,10 +164,17 @@ def stop_sigma_dut(sigma):
     sigma_log_output(cmd)
     logger.debug("Terminating sigma_dut process")
     cmd.terminate()
-    cmd.wait()
-    out, err = cmd.communicate()
-    logger.debug("sigma_dut stdout: " + str(out.decode()))
-    logger.debug("sigma_dut stderr: " + str(err.decode()))
+    try:
+        out, err = cmd.communicate(timeout=200)
+        logger.debug("sigma_dut stdout: " + str(out.decode()))
+        logger.debug("sigma_dut stderr: " + str(err.decode()))
+    except subprocess.TimeoutExpired:
+        logger.debug("sigma_dut termination timed out")
+        cmd.kill()
+        out, err = cmd.communicate()
+        logger.debug("sigma_dut stdout: " + str(out.decode()))
+        logger.debug("sigma_dut stderr: " + str(err.decode()))
+
     subprocess.call(["ip", "addr", "del", "dev", sigma['ifname'],
                      "127.0.0.11/24"],
                     stderr=open('/dev/null', 'w'))
@@ -2719,6 +2726,7 @@ def run_sigma_dut_dpp_pkex_responder(dev, apdev, v1=False):
         stop_sigma_dut(sigma)
 
 def dpp_init_conf(dev, id1, conf, conf_id, extra):
+    time.sleep(1)
     logger.info("Starting DPP initiator/configurator in a thread")
     cmd = "DPP_AUTH_INIT peer=%d conf=%s %s configurator=%d" % (id1, conf, extra, conf_id)
     if "OK" not in dev.request(cmd):
@@ -5791,8 +5799,8 @@ def test_sigma_dut_ap_transition_disable(dev, apdev, params):
 
             dev[0].set("sae_groups", "")
             dev[0].connect("test-sae", key_mgmt="SAE", psk="12345678",
-                           ieee80211w="2", scan_freq="2412")
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+                           ieee80211w="2", scan_freq="2412", wait_connect=False)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is None:
                 raise Exception("Transition disable not indicated")
             if ev.split(' ')[1] != "01":
@@ -5816,8 +5824,8 @@ def test_sigma_dut_ap_transition_disable_change(dev, apdev, params):
             sigma_dut_cmd_check("ap_config_commit,NAME,AP")
             dev[0].set("sae_groups", "")
             dev[0].connect("test-sae", key_mgmt="SAE", psk="12345678",
-                           ieee80211w="2", scan_freq="2412")
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+                           ieee80211w="2", scan_freq="2412", wait_connect=False)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is not None:
                 raise Exception("Unexpected transition disable indication")
             dev[0].request("DISCONNECT")
@@ -5826,8 +5834,7 @@ def test_sigma_dut_ap_transition_disable_change(dev, apdev, params):
 
             sigma_dut_cmd_check("ap_set_rfeature,NAME,AP,Transition_Disable,1,Transition_Disable_Index,0")
             dev[0].request("RECONNECT")
-            dev[0].wait_connected()
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is None:
                 raise Exception("Transition disable not indicated")
             if ev.split(' ')[1] != "01":

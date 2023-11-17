@@ -678,6 +678,19 @@
 #define WLAN_PA_FILS_DISCOVERY 34
 #define WLAN_PA_LOCATION_MEASUREMENT_REPORT 47
 
+/* HT Action field values (IEEE P802.11-REVme/D4.0, 9.6.11.1, Table 9-491) */
+#define WLAN_HT_ACTION_NOTIFY_CHANWIDTH 0
+#define WLAN_HT_ACTION_SMPS 1
+#define WLAN_HT_ACTION_CSI 4
+#define WLAN_HT_ACTION_NONCOMPRESSED_BF 5
+#define WLAN_HT_ACTION_COMPRESSED_BF 6
+#define WLAN_HT_ACTION_ASEL_IDX_FEEDBACK 7
+
+/* VHT Action field values (IEEE P802.11-REVme/D4.0, 9.6.22.1, Table 9-579) */
+#define WLAN_VHT_ACTION_COMPRESSED_BF 0
+#define WLAN_VHT_ACTION_GROUP_ID_MGMT 1
+#define WLAN_VHT_ACTION_OPMODE_NOTIF 2
+
 /* Protected Dual of Public Action frames (IEEE Std 802.11-2016, 9.6.11,
  * Table 9-332) */
 #define WLAN_PROT_DSE_ENABLEMENT 1
@@ -1185,9 +1198,6 @@ struct ieee80211_ampe_ie {
 	 */
 } STRUCT_PACKED;
 
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif /* _MSC_VER */
 
 #define ERP_INFO_NON_ERP_PRESENT BIT(0)
 #define ERP_INFO_USE_PROTECTION BIT(1)
@@ -1356,6 +1366,10 @@ struct ieee80211_ampe_ie {
 #define VHT_OPMODE_NOTIF_RX_NSS_SHIFT		    4
 
 #define VHT_RX_NSS_MAX_STREAMS			    8
+
+#define VHT_OPMODE_CHANNEL_40MHZ		    ((u8) BIT(0))
+#define VHT_OPMODE_CHANNEL_80MHZ		    ((u8) BIT(1))
+#define VHT_OPMODE_CHANNEL_160MHZ		    ((u8) BIT(1) | BIT(2))
 
 /* VHT operation information - channel widths */
 #define CHANWIDTH_USE_HT	0
@@ -2452,8 +2466,12 @@ struct ieee80211_he_mu_edca_parameter_set {
  */
 #define RNR_HEADER_LEN                              2
 #define RNR_TBTT_HEADER_LEN                         4
+#define RNR_TBTT_INFO_HDR_TYPE_MSK                  0x03
+#define RNR_TBTT_INFO_HDR_FILTERED_AP               0x04
+#define RNR_TBTT_INFO_HDR_CNT_MSK                   0xf0
 #define RNR_TBTT_INFO_COUNT(x)                      (((x) & 0xf) << 4)
 #define RNR_TBTT_INFO_COUNT_MAX                     16
+#define RNR_TBTT_INFO_COUNT_VAL(x)                  (((x) & 0xf0) >> 4)
 #define RNR_TBTT_INFO_LEN                           13
 #define RNR_TBTT_INFO_MLD_LEN                       16
 #define RNR_NEIGHBOR_AP_OFFSET_UNKNOWN              255
@@ -2696,9 +2714,17 @@ struct eht_ml_probe_req_common_info {
 	u8 variable[];
 } STRUCT_PACKED;
 
-/* IEEE P802.11be/D2.0, 9.4.2.312.4 - Reconfiguration Multi-Link element */
+/* IEEE P802.11be/D4.0, 9.4.2.312.4 - Reconfiguration Multi-Link element */
 
-#define EHT_ML_PRES_BM_RECONFIGURE_MLD_ADDRESS 0x0001
+#define RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR   0x0001
+
+#define EHT_PER_STA_RECONF_CTRL_LINK_ID_MSK        0x000f
+#define EHT_PER_STA_RECONF_CTRL_COMPLETE_PROFILE   0x0010
+#define EHT_PER_STA_RECONF_CTRL_MAC_ADDR           0x0020
+#define EHT_PER_STA_RECONF_CTRL_AP_REMOVAL_TIMER   0x0040
+#define EHT_PER_STA_RECONF_CTRL_OP_UPDATE_TYPE_MSK 0x0780
+#define EHT_PER_STA_RECONF_CTRL_OP_PARAMS          0x0800
+#define EHT_PER_STA_RECONF_CTRL_NSTR_BITMAP_SIZE   0x1000
 
 /* IEEE P802.11be/D2.0, 9.4.2.312.1 - Multi-Link element / General */
 
@@ -2903,5 +2929,9 @@ struct ieee80211_neighbor_ap_info {
 	/* Followed by the rest of the TBTT Information field contents */
 	u8 data[0];
 } STRUCT_PACKED;
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif /* _MSC_VER */
 
 #endif /* IEEE802_11_DEFS_H */

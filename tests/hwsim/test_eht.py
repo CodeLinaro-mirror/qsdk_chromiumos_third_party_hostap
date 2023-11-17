@@ -107,18 +107,18 @@ def test_prefer_eht_20(dev, apdev):
     if est != "172103":
       raise Exception("Unexpected BSS1 est_throughput: " + est)
 
-def start_eht_sae_ap(apdev, ml=False):
+def start_eht_sae_ap(apdev, ml=False, transition_mode=False):
     params = hostapd.wpa2_params(ssid="eht", passphrase="12345678")
     params["ieee80211ax"] = "1"
     params["ieee80211be"] = "1"
-    params['ieee80211w'] = '2'
-    params['rsn_pairwise'] = "GCMP-256"
-    params['group_cipher'] = "GCMP-256"
-    params["group_mgmt_cipher"] = "BIP-GMAC-256"
-    params['beacon_prot'] = '2'
-    params['wpa_key_mgmt'] = 'SAE-EXT-KEY'
-    params['sae_groups'] = "20"
-    params['sae_pwe'] = "1"
+    params['ieee80211w'] = '1' if transition_mode else '2'
+    params['rsn_pairwise'] = "CCMP GCMP-256" if transition_mode else "GCMP-256"
+    params['group_cipher'] = "CCMP" if transition_mode else "GCMP-256"
+    params["group_mgmt_cipher"] = "AES-128-CMAC" if transition_mode else "BIP-GMAC-256"
+    params['beacon_prot'] = '1'
+    params['wpa_key_mgmt'] = "SAE SAE-EXT-KEY" if transition_mode else 'SAE-EXT-KEY'
+    params['sae_groups'] = "19 20" if transition_mode else "20"
+    params['sae_pwe'] = "2" if transition_mode else "1"
     if ml:
         ml_elem = "ff0d6b" + "3001" + "0a" + "021122334455" + "01" + "00" + "00"
         params['vendor_elements'] = ml_elem
@@ -157,20 +157,34 @@ def test_eht_sae_mlo(dev, apdev):
         dev[0].connect("eht", key_mgmt="SAE-EXT-KEY", psk="12345678",
                        ieee80211w="2", beacon_prot="1",
                        pairwise="GCMP-256", group="GCMP-256",
-                       group_mgmt="BIP-GMAC-256", scan_freq="2412",
-                       wait_connect=False)
-        ev = dev[0].wait_event(["CTRL-EVENT-CONNECTED",
-                                "CTRL-EVENT-AUTH-REJECT"], timeout=10)
-        if ev is None:
-            raise Exception("No connection result reported")
-        if "CTRL-EVENT-AUTH-REJECT" in ev:
-            # There is no MLO support with SAE in hostapd yet, so allow failure
-            # due to MLD address not being used.
-            if "status_code=15" not in ev:
-                raise Exception("Unexpected authentication failure: " + ev)
+                       group_mgmt="BIP-GMAC-256", scan_freq="2412")
     finally:
         dev[0].set("sae_groups", "")
         dev[0].set("sae_pwe", "0")
+
+def test_eht_sae_mlo_tm(dev, apdev):
+    """EHT+MLO AP with SAE and transition mode"""
+    check_sae_capab(dev[0])
+    check_sae_capab(dev[1])
+
+    hapd = start_eht_sae_ap(apdev[0], ml=True, transition_mode=True)
+    try:
+        dev[0].set("sae_groups", "20")
+        dev[0].set("sae_pwe", "2")
+        dev[0].connect("eht", key_mgmt="SAE-EXT-KEY", psk="12345678",
+                       ieee80211w="2", beacon_prot="1",
+                       pairwise="GCMP-256", group="CCMP",
+                       group_mgmt="AES-128-CMAC", scan_freq="2412")
+        dev[1].set("sae_groups", "19")
+        dev[1].connect("eht", key_mgmt="SAE-EXT-KEY", psk="12345678",
+                       ieee80211w="2", beacon_prot="1",
+                       pairwise="CCMP", group="CCMP",
+                       group_mgmt="AES-128-CMAC", scan_freq="2412",
+                       disable_eht="1")
+    finally:
+        dev[0].set("sae_groups", "")
+        dev[0].set("sae_pwe", "0")
+        dev[1].set("sae_groups", "")
 
 def eht_mld_enable_ap(iface, params):
     hapd = hostapd.add_mld_link(iface, params)
@@ -488,3 +502,85 @@ def test_eht_mld_ptk_rekey(dev, apdev):
         time.sleep(0.1)
         traffic_test(wpas, hapd0)
         traffic_test(wpas, hapd1)
+
+def test_eht_mld_gtk_rekey(dev, apdev):
+    """AP MLD and GTK rekeying with MLD client connection using two links"""
+    with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
+        HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+
+        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+        wpas.interface_add(wpas_iface)
+
+        passphrase = 'qwertyuiop'
+        ssid = "mld_ap_sae_two_link"
+        params = eht_mld_ap_wpa2_params(ssid, passphrase,
+                                        key_mgmt="SAE-EXT-KEY SAE WPA-PSK WPA-PSK-SHA256",
+                                        mfp="1")
+        params['wpa_group_rekey'] = '5'
+
+        hapd0 = eht_mld_enable_ap(hapd_iface, params)
+
+        params['channel'] = '6'
+
+        hapd1 = eht_mld_enable_ap(hapd_iface, params)
+
+        wpas.connect(ssid, sae_password=passphrase, scan_freq="2412 2437",
+                     key_mgmt="SAE-EXT-KEY", ieee80211w="2")
+        ev0 = hapd0.wait_event(["AP-STA-CONNECT"], timeout=1)
+        if ev0 is None:
+            ev1 = hapd1.wait_event(["AP-STA-CONNECT"], timeout=1)
+        traffic_test(wpas, hapd0)
+        traffic_test(wpas, hapd1)
+
+        for i in range(2):
+            ev = wpas.wait_event(["MLO RSN: Group rekeying completed",
+                                  "CTRL-EVENT-DISCONNECTED"], timeout=10)
+            if ev is None:
+                raise Exception("GTK rekey timed out")
+            if "CTRL-EVENT-DISCONNECTED" in ev:
+                raise Exception("Disconnect instead of rekey")
+
+            #TODO: Uncomment these ones GTK rekeying works for MLO
+            #time.sleep(0.1)
+            #traffic_test(wpas, hapd0)
+            #traffic_test(wpas, hapd1)
+
+def test_eht_ml_probe_req(dev, apdev):
+    """AP MLD with two links and non-AP MLD sending ML Probe Request"""
+    with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
+        HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+
+        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+        wpas.interface_add(wpas_iface)
+
+        passphrase = 'qwertyuiop'
+        ssid = "mld_ap_sae_two_link"
+        params = eht_mld_ap_wpa2_params(ssid, passphrase,
+                                        key_mgmt="SAE-EXT-KEY")
+
+        hapd0 = eht_mld_enable_ap(hapd_iface, params)
+
+        params['channel'] = '6'
+
+        hapd1 = eht_mld_enable_ap(hapd_iface, params)
+
+        bssid = hapd0.own_addr()
+        wpas.scan_for_bss(bssid, freq=2412)
+
+        time.sleep(1)
+        cmd = "ML_PROBE_REQ bssid=" + bssid + " mld_id=0"
+        if "OK" not in wpas.request(cmd):
+            raise Exception("Failed to run: " + cmd)
+        ev = wpas.wait_event(["CTRL-EVENT-SCAN-RESULTS",
+                              "CTRL-EVENT-SCAN-FAILED"], timeout=10)
+        if ev is None:
+            raise Exception("ML_PROBE_REQ did not result in scan results")
+
+        time.sleep(1)
+        cmd = "ML_PROBE_REQ bssid=" + bssid + " mld_id=0 link_id=2"
+        if "OK" not in wpas.request(cmd):
+            raise Exception("Failed to run: " + cmd)
+        ev = wpas.wait_event(["CTRL-EVENT-SCAN-RESULTS",
+                              "CTRL-EVENT-SCAN-FAILED"], timeout=10)
+        if ev is None:
+            raise Exception("ML_PROBE_REQ did not result in scan results")

@@ -540,12 +540,12 @@ static void sae_set_state(struct sta_info *sta, enum sae_state state,
 }
 
 
-static const char * sae_get_password(struct hostapd_data *hapd,
-				     struct sta_info *sta,
-				     const char *rx_id,
-				     struct sae_password_entry **pw_entry,
-				     struct sae_pt **s_pt,
-				     const struct sae_pk **s_pk)
+const char * sae_get_password(struct hostapd_data *hapd,
+			      struct sta_info *sta,
+			      const char *rx_id,
+			      struct sae_password_entry **pw_entry,
+			      struct sae_pt **s_pt,
+			      const struct sae_pk **s_pk)
 {
 	const char *password = NULL;
 	struct sae_password_entry *pw;
@@ -555,7 +555,8 @@ static const char * sae_get_password(struct hostapd_data *hapd,
 
 	for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
 		if (!is_broadcast_ether_addr(pw->peer_addr) &&
-		    os_memcmp(pw->peer_addr, sta->addr, ETH_ALEN) != 0)
+		    (!sta ||
+		     os_memcmp(pw->peer_addr, sta->addr, ETH_ALEN) != 0))
 			continue;
 		if ((rx_id && !pw->identifier) || (!rx_id && pw->identifier))
 			continue;
@@ -573,7 +574,7 @@ static const char * sae_get_password(struct hostapd_data *hapd,
 		pt = hapd->conf->ssid.pt;
 	}
 
-	if (!password) {
+	if (!password && sta) {
 		for (psk = sta->psk; psk; psk = psk->next) {
 			if (psk->is_passphrase) {
 				password = psk->passphrase;
@@ -3958,8 +3959,6 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	if (hapd->conf->wps_state && elems->wps_ie && ies && ies_len) {
 		wpa_printf(MSG_DEBUG, "STA included WPS IE in (Re)Association "
 			   "Request - assume WPS is used");
-		if (check_sa_query(hapd, sta, reassoc))
-			return WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
 		sta->flags |= WLAN_STA_WPS;
 		wpabuf_free(sta->wps_ie);
 		sta->wps_ie = ieee802_11_vendor_ie_concat(ies, ies_len,
@@ -3990,9 +3989,6 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (hapd->conf->wpa && wpa_ie) {
 		enum wpa_validate_result res;
-
-		if (check_sa_query(hapd, sta, reassoc))
-			return WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
 
 		wpa_ie -= 2;
 		wpa_ie_len += 2;
@@ -4442,7 +4438,8 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
 	}
 	hapd->sta_aid[(sta->aid - 1) / 32] |= BIT((sta->aid - 1) % 32);
 	sta->listen_interval = origin_sta->listen_interval;
-	update_ht_state(hapd, sta);
+	if (update_ht_state(hapd, sta) > 0)
+		ieee802_11_update_beacons(hapd->iface);
 
 	/* RSN Authenticator should always be the one on the original station */
 	wpa_auth_sta_deinit(sta->wpa_sm);
@@ -5169,6 +5166,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 	int delay_assoc = 0;
 #endif /* CONFIG_FILS */
 	int omit_rsnxe = 0;
+	bool set_beacon = false;
 
 	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_req) :
 				      sizeof(mgmt->u.assoc_req))) {
@@ -5344,6 +5342,11 @@ static void handle_assoc(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_MBO */
 
+	if (hapd->conf->wpa && check_sa_query(hapd, sta, reassoc)) {
+		resp = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+		goto fail;
+	}
+
 	/*
 	 * sta->capability is used in check_assoc_ies() for RRM enabled
 	 * capability element.
@@ -5405,7 +5408,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 		sta->nonerp_set = 1;
 		hapd->iface->num_sta_non_erp++;
 		if (hapd->iface->num_sta_non_erp == 1)
-			ieee802_11_update_beacons(hapd->iface);
+			set_beacon = true;
 	}
 
 	if (!(sta->capability & WLAN_CAPABILITY_SHORT_SLOT_TIME) &&
@@ -5416,7 +5419,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 		    hapd->iface->current_mode->mode ==
 		    HOSTAPD_MODE_IEEE80211G &&
 		    hapd->iface->num_sta_no_short_slot_time == 1)
-			ieee802_11_update_beacons(hapd->iface);
+			set_beacon = true;
 	}
 
 	if (sta->capability & WLAN_CAPABILITY_SHORT_PREAMBLE)
@@ -5431,10 +5434,11 @@ static void handle_assoc(struct hostapd_data *hapd,
 		if (hapd->iface->current_mode &&
 		    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211G
 		    && hapd->iface->num_sta_no_short_preamble == 1)
-			ieee802_11_update_beacons(hapd->iface);
+			set_beacon = true;
 	}
 
-	update_ht_state(hapd, sta);
+	if (update_ht_state(hapd, sta) > 0)
+		set_beacon = true;
 
 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 		       HOSTAPD_LEVEL_DEBUG,
@@ -5472,6 +5476,9 @@ static void handle_assoc(struct hostapd_data *hapd,
 			delay_assoc = 1;
 	}
 #endif /* CONFIG_FILS */
+
+	if (set_beacon)
+		ieee802_11_set_beacons(hapd->iface);
 
  fail:
 
@@ -6471,7 +6478,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	/* WPS not supported on backhaul BSS. Disable 4addr mode on fronthaul */
 	if ((sta->flags & WLAN_STA_WDS) ||
 	    (sta->flags & WLAN_STA_MULTI_AP &&
-	     !(hapd->conf->multi_ap & FRONTHAUL_BSS) &&
+	     (hapd->conf->multi_ap & BACKHAUL_BSS) &&
 	     !(sta->flags & WLAN_STA_WPS))) {
 		int ret;
 		char ifname_wds[IFNAMSIZ + 1];
@@ -7175,9 +7182,11 @@ hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
 
 	while (start < hapd->iface->num_bss) {
 		if (!len ||
-		    len + RNR_TBTT_HEADER_LEN + RNR_TBTT_INFO_LEN > 255) {
+		    len + RNR_TBTT_HEADER_LEN + RNR_TBTT_INFO_LEN > 255 ||
+		    tbtt_count >= RNR_TBTT_INFO_COUNT_MAX) {
 			len = RNR_HEADER_LEN;
 			total_len += RNR_HEADER_LEN;
+			tbtt_count = 0;
 		}
 
 		len += RNR_TBTT_HEADER_LEN;
@@ -7422,7 +7431,8 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
 
 	while (start < iface->num_bss) {
 		if (!len ||
-		    len + RNR_TBTT_HEADER_LEN + RNR_TBTT_INFO_LEN > 255) {
+		    len + RNR_TBTT_HEADER_LEN + RNR_TBTT_INFO_LEN > 255 ||
+		    tbtt_count >= RNR_TBTT_INFO_COUNT_MAX) {
 			eid_start = eid;
 			*eid++ = WLAN_EID_REDUCED_NEIGHBOR_REPORT;
 			size_offset = eid++;
@@ -7754,7 +7764,13 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			    (conf->dtim_period % elem_count))
 				conf->dtim_period = elem_count;
 			*eid++ = conf->dtim_period;
-			*eid++ = 0xFF; /* DTIM Count */
+			/* The driver is expected to update the DTIM Count
+			 * field for each BSS that corresponds to a
+			 * nontransmitted BSSID. The value is initialized to
+			 * 0 here so that the DTIM count would be somewhat
+			 * functional even if the driver were not to update
+			 * this. */
+			*eid++ = 0; /* DTIM Count */
 		} else {
 			/* Probe Request frame does not include DTIM Period and
 			 * DTIM Count fields. */
@@ -7785,11 +7801,12 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			non_inherit_ie[ie_count++] = WLAN_EID_EXT_SUPP_RATES;
 		if (ie_count) {
 			*eid++ = WLAN_EID_EXTENSION;
-			*eid++ = 2 + ie_count;
+			*eid++ = 2 + ie_count + 1;
 			*eid++ = WLAN_EID_EXT_NON_INHERITANCE;
 			*eid++ = ie_count;
 			os_memcpy(eid, non_inherit_ie, ie_count);
 			eid += ie_count;
+			*eid++ = 0; /* No Element ID Extension List */
 		}
 
 		*eid_len_pos = (eid - eid_len_pos) - 1;

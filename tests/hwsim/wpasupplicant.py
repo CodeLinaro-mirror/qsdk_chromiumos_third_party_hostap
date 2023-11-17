@@ -504,7 +504,6 @@ class WpaSupplicant:
         self.dump_monitor()
         self.select_network(id)
         self.wait_connected(timeout=timeout)
-        self.dump_monitor()
 
     def get_status(self, extra=None):
         if extra:
@@ -1099,7 +1098,7 @@ class WpaSupplicant:
                       "wep_tx_keyidx", "scan_freq", "freq_list", "eap",
                       "eapol_flags", "fragment_size", "scan_ssid", "auth_alg",
                       "wpa_ptk_rekey", "disable_ht", "disable_vht", "bssid",
-                      "disable_he",
+                      "disable_he", "disable_eht",
                       "disable_max_amsdu", "ampdu_factor", "ampdu_density",
                       "disable_ht40", "disable_sgi", "disable_ldpc",
                       "ht40_intolerant", "update_identifier", "mac_addr",
@@ -1383,6 +1382,9 @@ class WpaSupplicant:
         ev = self.wait_event(["MGMT-RX"], timeout=timeout)
         if ev is None:
             return None
+        return self.mgmt_rx_parse(ev)
+
+    def mgmt_rx_parse(self, ev):
         msg = {}
         items = ev.split(' ')
         field, val = items[1].split('=')
@@ -1545,6 +1547,15 @@ class WpaSupplicant:
             cmd += " role=" + role
         if "OK" not in self.request(cmd):
             raise Exception("Failed to start listen operation")
+        # Since DPP listen is a radio work, make sure it has started
+        # by the time we return and continue with the test, since it
+        # usually will send something this side should receive.
+        work_started = "dpp-listen@" + self.ifname + ":" + str(freq) + ":1"
+        for i in range(10):
+            if work_started in self.request("RADIO_WORK show"):
+                return
+            time.sleep(0.01)
+        raise Exception("Failed to start DPP listen work")
 
     def dpp_auth_init(self, peer=None, uri=None, conf=None, configurator=None,
                       extra=None, own=None, role=None, neg_freq=None,

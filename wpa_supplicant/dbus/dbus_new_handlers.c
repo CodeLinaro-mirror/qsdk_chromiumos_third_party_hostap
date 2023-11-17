@@ -4350,7 +4350,7 @@ dbus_bool_t wpas_dbus_getter_pkcs11_engine_path(
 	return wpas_dbus_string_property_getter(iter,
 						wpa_s->conf->pkcs11_engine_path,
 						error);
-#else
+#else /* CONFIG_PKCS11_ENGINE_PATH */
 	return wpas_dbus_string_property_getter(iter,
 						CONFIG_PKCS11_ENGINE_PATH,
 						error);
@@ -4377,7 +4377,7 @@ dbus_bool_t wpas_dbus_getter_pkcs11_module_path(
 	return wpas_dbus_string_property_getter(iter,
 						wpa_s->conf->pkcs11_module_path,
 						error);
-#else
+#else /* CONFIG_PKCS11_MODULE_PATH */
 	return wpas_dbus_string_property_getter(iter,
 						CONFIG_PKCS11_MODULE_PATH,
 						error);
@@ -5316,7 +5316,7 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 	DBusMessageIter iter_dict, variant_iter;
 	const char *group;
 	const char *pairwise[5]; /* max 5 pairwise ciphers is supported */
-	const char *key_mgmt[18]; /* max 18 key managements may be supported */
+	const char *key_mgmt[19]; /* max 19 key managements may be supported */
 	int n;
 
 	if (!dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
@@ -5379,6 +5379,10 @@ static dbus_bool_t wpas_dbus_get_bss_security_prop(
 #endif /* CONFIG_OWE */
 	if (ie_data->key_mgmt & WPA_KEY_MGMT_NONE)
 		key_mgmt[n++] = "wpa-none";
+#ifdef CONFIG_SHA384
+	if (ie_data->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384)
+		key_mgmt[n++] = "wpa-eap-sha384";
+#endif /* CONFIG_SHA384 */
 
 	if (!wpa_dbus_dict_append_string_array(&iter_dict, "KeyMgmt",
 					       key_mgmt, n))

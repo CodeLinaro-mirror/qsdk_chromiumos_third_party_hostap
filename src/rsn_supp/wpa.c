@@ -222,7 +222,7 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 	size_t mic_len, hdrlen, rlen;
 	struct wpa_eapol_key *reply;
 	int key_info, ver;
-	u8 bssid[ETH_ALEN], *rbuf, *key_mic, *mic;
+	u8 *rbuf, *key_mic, *mic;
 
 	if (pairwise && sm->wpa_deny_ptk0_rekey && !sm->use_ext_key_id &&
 	    wpa_sm_get_state(sm) == WPA_COMPLETED && !error) {
@@ -241,12 +241,6 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 		ver = WPA_KEY_INFO_TYPE_HMAC_SHA1_AES;
 	else
 		ver = WPA_KEY_INFO_TYPE_HMAC_MD5_RC4;
-
-	if (wpa_sm_get_bssid(sm, bssid) < 0) {
-		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
-			"Failed to read BSSID for EAPOL-Key request");
-		return;
-	}
 
 	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len);
 	hdrlen = sizeof(*reply) + mic_len + 2;
@@ -284,8 +278,8 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 		"WPA: Sending EAPOL-Key Request (error=%d "
 		"pairwise=%d ptk_set=%d len=%lu)",
 		error, pairwise, sm->ptk_set, (unsigned long) rlen);
-	wpa_eapol_key_send(sm, &sm->ptk, ver, bssid, ETH_P_EAPOL, rbuf, rlen,
-			   key_mic);
+	wpa_eapol_key_send(sm, &sm->ptk, ver, wpa_sm_get_auth_addr(sm),
+			   ETH_P_EAPOL, rbuf, rlen, key_mic);
 }
 
 
@@ -2744,8 +2738,8 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 #endif /* CONFIG_OCV */
 
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Sending EAPOL-Key 2/2");
-	return wpa_eapol_key_send(sm, &sm->ptk, ver, sm->bssid, ETH_P_EAPOL,
-				  rbuf, rlen, key_mic);
+	return wpa_eapol_key_send(sm, &sm->ptk, ver, wpa_sm_get_auth_addr(sm),
+				  ETH_P_EAPOL, rbuf, rlen, key_mic);
 }
 
 
@@ -3828,6 +3822,8 @@ static u32 wpa_key_mgmt_suite(struct wpa_sm *sm)
 		return RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
 		return RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192;
+	case WPA_KEY_MGMT_IEEE8021X_SHA384:
+		return RSN_AUTH_KEY_MGMT_802_1X_SHA384;
 	default:
 		return 0;
 	}

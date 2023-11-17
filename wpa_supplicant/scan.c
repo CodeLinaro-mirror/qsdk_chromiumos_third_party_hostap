@@ -621,7 +621,7 @@ void wpa_supplicant_set_default_scan_ies(struct wpa_supplicant *wpa_s)
 	wpa_drv_get_ext_capa(wpa_s, type);
 
 	ext_capab_len = wpas_build_ext_capab(wpa_s, ext_capab,
-					     sizeof(ext_capab));
+					     sizeof(ext_capab), NULL);
 	if (ext_capab_len > 0 &&
 	    wpabuf_resize(&default_ies, ext_capab_len) == 0)
 		wpabuf_put_data(default_ies, ext_capab, ext_capab_len);
@@ -655,6 +655,67 @@ void wpa_supplicant_set_default_scan_ies(struct wpa_supplicant *wpa_s)
 }
 
 
+static struct wpabuf * wpa_supplicant_ml_probe_ie(int mld_id, u16 links)
+{
+	struct wpabuf *extra_ie;
+	u16 control = MULTI_LINK_CONTROL_TYPE_PROBE_REQ;
+	size_t len = 3 + 4 + 4 * MAX_NUM_MLD_LINKS;
+	u8 link_id;
+	u8 *len_pos;
+
+	if (mld_id >= 0) {
+		control |= EHT_ML_PRES_BM_PROBE_REQ_AP_MLD_ID;
+		len++;
+	}
+
+	extra_ie = wpabuf_alloc(len);
+	if (!extra_ie)
+		return NULL;
+
+	wpabuf_put_u8(extra_ie, WLAN_EID_EXTENSION);
+	len_pos = wpabuf_put(extra_ie, 1);
+	wpabuf_put_u8(extra_ie, WLAN_EID_EXT_MULTI_LINK);
+
+	wpabuf_put_le16(extra_ie, control);
+
+	/* common info length and MLD ID (if requested) */
+	if (mld_id >= 0) {
+		wpabuf_put_u8(extra_ie, 2);
+		wpabuf_put_u8(extra_ie, mld_id);
+
+		wpa_printf(MSG_DEBUG, "MLD: ML probe targeted at MLD ID %d",
+			   mld_id);
+	} else {
+		wpabuf_put_u8(extra_ie, 1);
+
+		wpa_printf(MSG_DEBUG, "MLD: ML probe targeted at receiving AP");
+	}
+
+	if (!links)
+		wpa_printf(MSG_DEBUG, "MLD: Probing all links");
+	else
+		wpa_printf(MSG_DEBUG, "MLD: Probing links 0x%04x", links);
+
+	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+		if (!(links & BIT(link_id)))
+			continue;
+
+		wpabuf_put_u8(extra_ie, EHT_ML_SUB_ELEM_PER_STA_PROFILE);
+
+		/* Subelement length includes only the control */
+		wpabuf_put_u8(extra_ie, 2);
+
+		control = link_id | EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK;
+
+		wpabuf_put_le16(extra_ie, control);
+	}
+
+	*len_pos = (u8 *) wpabuf_put(extra_ie, 0) - len_pos - 1;
+
+	return extra_ie;
+}
+
+
 static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
 {
 	struct wpabuf *extra_ie = NULL;
@@ -665,6 +726,15 @@ static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
 	enum wps_request_type req_type = WPS_REQ_ENROLLEE_INFO;
 #endif /* CONFIG_WPS */
 
+	if (!is_zero_ether_addr(wpa_s->ml_probe_bssid)) {
+		extra_ie = wpa_supplicant_ml_probe_ie(wpa_s->ml_probe_mld_id,
+						      wpa_s->ml_probe_links);
+
+		/* No other elements should be included in the probe request */
+		wpa_printf(MSG_DEBUG, "MLD: Scan including only ML element");
+		return extra_ie;
+	}
+
 #ifdef CONFIG_P2P
 	if (wpa_s->p2p_group_interface == P2P_GROUP_INTERFACE_CLIENT)
 		wpa_drv_get_ext_capa(wpa_s, WPA_IF_P2P_CLIENT);
@@ -673,7 +743,7 @@ static struct wpabuf * wpa_supplicant_extra_ies(struct wpa_supplicant *wpa_s)
 		wpa_drv_get_ext_capa(wpa_s, WPA_IF_STATION);
 
 	ext_capab_len = wpas_build_ext_capab(wpa_s, ext_capab,
-					     sizeof(ext_capab));
+					     sizeof(ext_capab), NULL);
 	if (ext_capab_len > 0 &&
 	    wpabuf_resize(&extra_ie, ext_capab_len) == 0)
 		wpabuf_put_data(extra_ie, ext_capab, ext_capab_len);
@@ -1120,6 +1190,10 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		params.ssids[0].ssid = wpa_s->go_params->ssid;
 		params.ssids[0].ssid_len = wpa_s->go_params->ssid_len;
 		params.num_ssids = 1;
+		params.bssid = wpa_s->go_params->peer_interface_addr;
+		wpa_printf(MSG_DEBUG, "P2P: Use specific BSSID " MACSTR
+			   " (peer interface address) for scan",
+			   MAC2STR(params.bssid));
 		goto ssid_list_set;
 	}
 
@@ -1130,6 +1204,12 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 			params.ssids[0].ssid_len =
 				wpa_s->current_ssid->ssid_len;
 			params.num_ssids = 1;
+			if (wpa_s->current_ssid->bssid_set) {
+				params.bssid = wpa_s->current_ssid->bssid;
+				wpa_printf(MSG_DEBUG, "P2P: Use specific BSSID "
+					   MACSTR " for scan",
+					   MAC2STR(params.bssid));
+			}
 		} else {
 			wpa_printf(MSG_DEBUG, "P2P: No specific SSID known for scan during invitation");
 		}
@@ -1403,7 +1483,12 @@ ssid_list_set:
 				"Scan a previously specified BSSID " MACSTR,
 				MAC2STR(params.bssid));
 		}
+	} else if (!is_zero_ether_addr(wpa_s->ml_probe_bssid)) {
+		wpa_printf(MSG_DEBUG, "Scanning for ML probe request");
+		params.bssid = wpa_s->ml_probe_bssid;
+		params.min_probe_req_content = true;
 	}
+
 
 	if (wpa_s->last_scan_req == MANUAL_SCAN_REQ &&
 	    wpa_s->manual_non_coloc_6ghz) {
@@ -1486,6 +1571,10 @@ scan:
 		if (params.bssid)
 			os_memset(wpa_s->next_scan_bssid, 0, ETH_ALEN);
 	}
+
+	wpa_s->ml_probe_mld_id = -1;
+	wpa_s->ml_probe_links = 0;
+	os_memset(wpa_s->ml_probe_bssid, 0, sizeof(wpa_s->ml_probe_bssid));
 }
 
 
@@ -3281,6 +3370,7 @@ wpa_scan_clone_params(const struct wpa_driver_scan_params *src)
 	params->relative_adjust_rssi = src->relative_adjust_rssi;
 	params->p2p_include_6ghz = src->p2p_include_6ghz;
 	params->non_coloc_6ghz = src->non_coloc_6ghz;
+	params->min_probe_req_content = src->min_probe_req_content;
 	return params;
 
 failed:

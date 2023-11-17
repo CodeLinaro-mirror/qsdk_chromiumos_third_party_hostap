@@ -22,6 +22,7 @@
 #include "common/wpa_ctrl.h"
 #include "eap_peer/eap.h"
 #include "ap/hostapd.h"
+#include "ap/sta_info.h"
 #include "p2p/p2p.h"
 #include "fst/fst.h"
 #include "wnm_sta.h"
@@ -61,10 +62,6 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 					      bool trigger_6ghz_scan,
 					      union wpa_event_data *data);
 #endif /* CONFIG_NO_SCAN_PROCESSING */
-#ifdef CONFIG_OWE
-static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
-			   const u8 **ret_ssid, size_t *ret_ssid_len);
-#endif /* CONFIG_OWE */
 
 
 int wpas_temp_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
@@ -144,8 +141,13 @@ static struct wpa_bss * wpa_supplicant_get_new_bss(
 {
 	struct wpa_bss *bss = NULL;
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	u8 drv_ssid[SSID_MAX_LEN];
+	int res;
 
-	if (ssid && ssid->ssid_len > 0)
+	res = wpa_drv_get_ssid(wpa_s, drv_ssid);
+	if (res > 0)
+		bss = wpa_bss_get(wpa_s, bssid, drv_ssid, res);
+	if (!bss && ssid && ssid->ssid_len > 0)
 		bss = wpa_bss_get(wpa_s, bssid, ssid->ssid, ssid->ssid_len);
 	if (!bss)
 		bss = wpa_bss_get_bssid(wpa_s, bssid);
@@ -216,14 +218,6 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
 			return 0; /* current profile still in use */
 
 #ifdef CONFIG_OWE
-		if (wpa_s->current_bss &&
-		    !(wpa_s->current_bss->flags & WPA_BSS_OWE_TRANSITION)) {
-			const u8 *match_ssid;
-			size_t match_ssid_len;
-
-			owe_trans_ssid(wpa_s, wpa_s->current_bss,
-				       &match_ssid, &match_ssid_len);
-		}
 		if ((wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
 		    wpa_s->current_bss &&
 		    (wpa_s->current_bss->flags & WPA_BSS_OWE_TRANSITION) &&
@@ -1095,7 +1089,6 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 #ifdef CONFIG_OWE
 	const u8 *owe, *pos, *end, *bssid;
 	u8 ssid_len;
-	struct wpa_bss *open_bss;
 
 	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
 	if (!owe || !wpa_bss_get_ie(bss, WLAN_EID_RSN))
@@ -1136,49 +1129,27 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 			}
 		}
 	}
-
-	if (bss->ssid_len > 0)
-		return;
-
-	open_bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
-	if (!open_bss)
-		return;
-	if (ssid_len != open_bss->ssid_len ||
-	    os_memcmp(pos, open_bss->ssid, ssid_len) != 0) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"OWE: transition mode SSID mismatch: %s",
-			wpa_ssid_txt(open_bss->ssid, open_bss->ssid_len));
-		return;
-	}
-
-	owe = wpa_bss_get_vendor_ie(open_bss, OWE_IE_VENDOR_TYPE);
-	if (!owe || wpa_bss_get_ie(open_bss, WLAN_EID_RSN)) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"OWE: transition mode open BSS unexpected info");
-		return;
-	}
-
-	pos = owe + 6;
-	end = owe + 2 + owe[1];
-
-	if (end - pos < ETH_ALEN + 1)
-		return;
-	if (os_memcmp(pos, bss->bssid, ETH_ALEN) != 0) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"OWE: transition mode BSSID mismatch: " MACSTR,
-			MAC2STR(pos));
-		return;
-	}
-	pos += ETH_ALEN;
-	ssid_len = *pos++;
-	if (end - pos < ssid_len || ssid_len > SSID_MAX_LEN)
-		return;
-	wpa_dbg(wpa_s, MSG_DEBUG, "OWE: learned transition mode OWE SSID: %s",
-		wpa_ssid_txt(pos, ssid_len));
-	os_memcpy(bss->ssid, pos, ssid_len);
-	bss->ssid_len = ssid_len;
-	bss->flags |= WPA_BSS_OWE_TRANSITION;
 #endif /* CONFIG_OWE */
+}
+
+
+static bool wpas_valid_ml_bss(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+
+{
+	u16 removed_links;
+
+	if (wpa_bss_parse_basic_ml_element(wpa_s, bss, NULL, NULL))
+		return true;
+
+	if (bss->n_mld_links == 0)
+		return true;
+
+	/* Check if the current BSS is going to be removed */
+	removed_links = wpa_bss_parse_reconf_ml_element(wpa_s, bss);
+	if (BIT(bss->mld_links[0].link_id) & removed_links)
+		return false;
+
+	return true;
 }
 
 
@@ -1578,9 +1549,32 @@ skip_assoc_disallow:
 #endif /* CONFIG_SAE_PK */
 
 	if (bss->ssid_len == 0) {
+#ifdef CONFIG_OWE
+		const u8 *owe_ssid = NULL;
+		size_t owe_ssid_len = 0;
+
+		owe_trans_ssid(wpa_s, bss, &owe_ssid, &owe_ssid_len);
+		if (owe_ssid && owe_ssid_len &&
+		    owe_ssid_len == ssid->ssid_len &&
+		    os_memcmp(owe_ssid, ssid->ssid, owe_ssid_len) == 0) {
+			if (debug_print)
+				wpa_dbg(wpa_s, MSG_DEBUG,
+					"   skip - no SSID in BSS entry for a possible OWE transition mode BSS");
+			int_array_add_unique(&wpa_s->owe_trans_scan_freq,
+					     bss->freq);
+			return false;
+		}
+#endif /* CONFIG_OWE */
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
 				"   skip - no SSID known for the BSS");
+		return false;
+	}
+
+	if (!wpas_valid_ml_bss(wpa_s, bss)) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"   skip - ML BSS going to be removed");
 		return false;
 	}
 
@@ -1837,6 +1831,82 @@ static void wpa_supplicant_req_new_scan(struct wpa_supplicant *wpa_s,
 }
 
 
+static bool ml_link_probe_scan(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->ml_connect_probe_ssid || !wpa_s->ml_connect_probe_bss)
+		return false;
+
+	wpa_msg(wpa_s, MSG_DEBUG,
+		"Request association with " MACSTR " after ML probe",
+		MAC2STR(wpa_s->ml_connect_probe_bss->bssid));
+
+	wpa_supplicant_associate(wpa_s, wpa_s->ml_connect_probe_bss,
+				 wpa_s->ml_connect_probe_ssid);
+
+	wpa_s->ml_connect_probe_ssid = NULL;
+	wpa_s->ml_connect_probe_bss = NULL;
+
+	return true;
+}
+
+
+static int wpa_supplicant_connect_ml_missing(struct wpa_supplicant *wpa_s,
+					     struct wpa_bss *selected,
+					     struct wpa_ssid *ssid)
+{
+	int *freqs;
+	u16 missing_links = 0, removed_links;
+
+	if (!((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_MLO) &&
+	      (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)))
+		return 0;
+
+	/* Try to resolve any missing link information */
+	if (wpa_bss_parse_basic_ml_element(wpa_s, selected, NULL,
+					   &missing_links) || !missing_links)
+		return 0;
+
+	removed_links = wpa_bss_parse_reconf_ml_element(wpa_s, selected);
+	missing_links &= ~removed_links;
+
+	if (!missing_links)
+		return 0;
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"MLD: Doing an ML probe for missing links 0x%04x",
+		missing_links);
+
+	freqs = os_malloc(sizeof(int) * 2);
+	if (!freqs)
+		return 0;
+
+	wpa_s->ml_connect_probe_ssid = ssid;
+	wpa_s->ml_connect_probe_bss = selected;
+
+	freqs[0] = selected->freq;
+	freqs[1] = 0;
+
+	wpa_s->manual_scan_passive = 0;
+	wpa_s->manual_scan_use_id = 0;
+	wpa_s->manual_scan_only_new = 0;
+	wpa_s->scan_id_count = 0;
+	os_free(wpa_s->manual_scan_freqs);
+	wpa_s->manual_scan_freqs = freqs;
+
+	os_memcpy(wpa_s->ml_probe_bssid, selected->bssid, ETH_ALEN);
+	wpa_s->ml_probe_mld_id = -1;
+	wpa_s->ml_probe_links = missing_links;
+
+	wpa_s->normal_scans = 0;
+	wpa_s->scan_req = MANUAL_SCAN_REQ;
+	wpa_s->after_wps = 0;
+	wpa_s->known_wps_freq = 0;
+	wpa_supplicant_req_scan(wpa_s, 0, 0);
+
+	return 1;
+}
+
+
 int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 			   struct wpa_bss *selected,
 			   struct wpa_ssid *ssid)
@@ -1893,6 +1963,10 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 			wpa_supplicant_req_new_scan(wpa_s, 10, 0);
 			return 0;
 		}
+
+		if (wpa_supplicant_connect_ml_missing(wpa_s, selected, ssid))
+			return 0;
+
 		wpa_msg(wpa_s, MSG_DEBUG, "Request association with " MACSTR,
 			MAC2STR(selected->bssid));
 		wpa_supplicant_associate(wpa_s, selected, ssid);
@@ -2387,6 +2461,9 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	    wpas_beacon_rep_scan_process(wpa_s, scan_res, &data->scan_info) > 0)
 		goto scan_work_done;
 
+	if (ml_link_probe_scan(wpa_s))
+		goto scan_work_done;
+
 	if ((wpa_s->conf->ap_scan == 2 && !wpas_wps_searching(wpa_s)))
 		goto scan_work_done;
 
@@ -2505,6 +2582,10 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 		return 0; /* no normal connection on p2p_mgmt interface */
 
 	wpa_s->owe_transition_search = 0;
+#ifdef CONFIG_OWE
+	os_free(wpa_s->owe_trans_scan_freq);
+	wpa_s->owe_trans_scan_freq = NULL;
+#endif /* CONFIG_OWE */
 	selected = wpa_supplicant_pick_network(wpa_s, &ssid);
 
 #ifdef CONFIG_MESH
@@ -2624,6 +2705,13 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 					"OWE: Use shorter wait during transition mode search");
 				timeout_sec = 0;
 				timeout_usec = 500000;
+				if (wpa_s->owe_trans_scan_freq) {
+					os_free(wpa_s->next_scan_freqs);
+					wpa_s->next_scan_freqs =
+						wpa_s->owe_trans_scan_freq;
+					wpa_s->owe_trans_scan_freq = NULL;
+					timeout_usec = 100000;
+				}
 				wpa_supplicant_req_new_scan(wpa_s, timeout_sec,
 							    timeout_usec);
 				return 0;
@@ -3325,6 +3413,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_OWE
 	if (wpa_s->key_mgmt == WPA_KEY_MGMT_OWE &&
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS2_OWE_OFFLOAD_STA) &&
 	    (!bssid_known ||
 	     owe_process_assoc_resp(wpa_s->wpa,
 				    wpa_s->valid_links ?
@@ -4247,7 +4336,7 @@ wpa_supplicant_event_michael_mic_failure(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_WARNING, "Michael MIC failure detected");
 	pairwise = (data && data->michael_mic_failure.unicast);
 	os_get_reltime(&t);
-	if ((wpa_s->last_michael_mic_error.sec &&
+	if ((os_reltime_initialized(&wpa_s->last_michael_mic_error) &&
 	     !os_reltime_expired(&t, &wpa_s->last_michael_mic_error, 60)) ||
 	    wpa_s->pending_mic_error_report) {
 		if (wpa_s->pending_mic_error_report) {
@@ -6361,6 +6450,21 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 #endif /* CONFIG_PASN */
 	case EVENT_PORT_AUTHORIZED:
+#ifdef CONFIG_AP
+		if (wpa_s->ap_iface && wpa_s->ap_iface->bss[0]) {
+			struct sta_info *sta;
+
+			sta = ap_get_sta(wpa_s->ap_iface->bss[0],
+					 data->port_authorized.sta_addr);
+			if (sta)
+				ap_sta_set_authorized(wpa_s->ap_iface->bss[0],
+						      sta, 1);
+			else
+				wpa_printf(MSG_DEBUG,
+					   "No STA info matching port authorized event found");
+			break;
+		}
+#endif /* CONFIG_AP */
 #ifndef CONFIG_NO_WPA
 		if (data->port_authorized.td_bitmap_len) {
 			wpa_printf(MSG_DEBUG,

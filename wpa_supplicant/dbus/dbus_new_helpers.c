@@ -1026,6 +1026,23 @@ DBusMessage * wpas_dbus_reply_new_from_error(DBusMessage *message,
 }
 
 
+static double guard_interval_to_double(enum guard_interval value)
+{
+	switch (value) {
+	case GUARD_INTERVAL_0_4:
+		return 0.4;
+	case GUARD_INTERVAL_0_8:
+		return 0.8;
+	case GUARD_INTERVAL_1_6:
+		return 1.6;
+	case GUARD_INTERVAL_3_2:
+		return 3.2;
+	default:
+		return 0;
+	}
+}
+
+
 /**
  * wpas_dbus_new_from_signal_information - Adds a wpa_signal_info
  * to a DBusMessage.

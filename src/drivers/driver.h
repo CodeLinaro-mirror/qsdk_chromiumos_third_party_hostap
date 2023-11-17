@@ -688,6 +688,13 @@ struct wpa_driver_scan_params {
 	 */
 	unsigned int non_coloc_6ghz:1;
 
+	/**
+	 * min_probe_req_content - Minimize probe request content to only have
+	 * minimal requirement elements, e.g., supported rates etc., and no
+	 * additional elements other then those provided by user space.
+	 */
+	unsigned int min_probe_req_content:1;
+
 	/*
 	 * NOTE: Whenever adding new parameters here, please make sure
 	 * wpa_scan_clone_params() and wpa_scan_free_params() get updated with
@@ -1123,6 +1130,23 @@ struct wpa_driver_associate_params {
 	 * should be prepared to handle %NULL value as an error.
 	 */
 	const u8 *psk;
+
+	/**
+	 * sae_password - Password for SAE authentication
+	 *
+	 * This value is made available only for WPA3-Personal (SAE) and only
+	 * for drivers that set WPA_DRIVER_FLAGS2_SAE_OFFLOAD.
+	 */
+	const char *sae_password;
+
+	/**
+	 * sae_password_id - Password Identifier for SAE authentication
+	 *
+	 * This value is made available only for WPA3-Personal (SAE) and only
+	 * for drivers that set WPA_DRIVER_FLAGS2_SAE_OFFLOAD. If %NULL, SAE
+	 * password identifier is not used.
+	 */
+	const char *sae_password_id;
 
 	/**
 	 * drop_unencrypted - Enable/disable unencrypted frame filtering
@@ -1788,6 +1812,21 @@ struct wpa_driver_ap_params {
 	 * mld_link_id - Link id for MLD BSS's
 	 */
 	u8 mld_link_id;
+
+	/**
+	 * psk - PSK passed to the driver for 4-way handshake offload
+	 */
+	u8 psk[PMK_LEN];
+
+	/**
+	 * psk_len - PSK length in bytes (0 = not set)
+	 */
+	size_t psk_len;
+
+	/**
+	 * sae_password - SAE password for SAE offload
+	 */
+	const char *sae_password;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -2244,7 +2283,7 @@ struct wpa_driver_capa {
 /** Driver handles SA Query procedures in AP mode */
 #define WPA_DRIVER_FLAGS2_SA_QUERY_OFFLOAD_AP	0x0000000000000200ULL
 /** Driver supports background radar/CAC detection */
-#define WPA_DRIVER_RADAR_BACKGROUND		0x0000000000000400ULL
+#define WPA_DRIVER_FLAGS2_RADAR_BACKGROUND	0x0000000000000400ULL
 /** Driver supports secure LTF in STA mode */
 #define WPA_DRIVER_FLAGS2_SEC_LTF_STA		0x0000000000000800ULL
 /** Driver supports secure RTT measurement exchange in STA mode */
@@ -2256,6 +2295,18 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA	0x0000000000002000ULL
 /** Driver supports MLO in station/AP mode */
 #define WPA_DRIVER_FLAGS2_MLO			0x0000000000004000ULL
+/** Driver supports minimal scan request probe content  */
+#define WPA_DRIVER_FLAGS2_SCAN_MIN_PREQ         0x0000000000008000ULL
+/** Driver supports SAE authentication offload in STA mode */
+#define WPA_DRIVER_FLAGS2_SAE_OFFLOAD_STA	0x0000000000010000ULL
+/** Driver support AP_PSK authentication offload */
+#define WPA_DRIVER_FLAGS2_4WAY_HANDSHAKE_AP_PSK	0x0000000000020000ULL
+/** Driver supports OWE STA offload */
+#define WPA_DRIVER_FLAGS2_OWE_OFFLOAD_STA	0x0000000000040000ULL
+/** Driver supports OWE AP offload */
+#define WPA_DRIVER_FLAGS2_OWE_OFFLOAD_AP	0x0000000000080000ULL
+/** Driver support AP SAE authentication offload */
+#define WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP	0x0000000000100000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -6644,10 +6695,19 @@ union wpa_event_data {
 
 	/**
 	 * struct port_authorized - Data for EVENT_PORT_AUTHORIZED
+	 * @td_bitmap: For STA mode, transition disable bitmap, if received in
+	 *	EAPOL-Key msg 3/4
+	 * @td_bitmap_len: For STA mode, length of td_bitmap
+	 * @sta_addr: For AP mode, the MAC address of the associated STA
+	 *
+	 * This event is used to indicate that the port is authorized and
+	 * open for normal data in STA and AP modes when 4-way handshake is
+	 * offloaded to the driver.
 	 */
 	struct port_authorized {
 		const u8 *td_bitmap;
 		size_t td_bitmap_len;
+		const u8 *sta_addr;
 	} port_authorized;
 
 	/**

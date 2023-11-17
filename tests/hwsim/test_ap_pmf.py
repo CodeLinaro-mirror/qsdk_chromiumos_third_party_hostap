@@ -87,7 +87,7 @@ def test_ocv_sa_query(dev, apdev):
     dev[0].connect(ssid, psk="12345678", ieee80211w="1", ocv="1",
                    key_mgmt="WPA-PSK WPA-PSK-SHA256", proto="WPA2",
                    scan_freq="2412")
-
+    hapd.wait_sta() # wait so we can actually request SA_QUERY
     # Test that client can handle SA Query with OCI element
     if "OK" not in hapd.request("SA_QUERY " + dev[0].own_addr()):
         raise Exception("SA_QUERY failed")
@@ -144,7 +144,7 @@ def test_ocv_sa_query_csa_missing(dev, apdev):
     dev[0].connect(ssid, psk="12345678", ieee80211w="1", ocv="1",
                    key_mgmt="WPA-PSK WPA-PSK-SHA256", proto="WPA2",
                    scan_freq="2412")
-
+    hapd.wait_sta() # wait so kernel won't drop deauth frame (MFP)
     hapd.set("ext_mgmt_frame_handling", "1")
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
@@ -901,10 +901,33 @@ def test_ap_pmf_inject_auth(dev, apdev):
 
 def test_ap_pmf_inject_assoc(dev, apdev):
     """WPA2-PSK with PMF and Association Request frame injection"""
+    run_ap_pmf_inject_assoc(dev, apdev, False)
+
+def test_ap_pmf_inject_assoc_wps(dev, apdev):
+    """WPA2-PSK/WPS with PMF and Association Request frame injection"""
+    run_ap_pmf_inject_assoc(dev, apdev, True)
+
+def inject_assoc_req(hapd, addr, frame):
+    hapd.set("ext_mgmt_frame_handling", "1")
+    res = hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % frame)
+    if "OK" not in res:
+        raise Exception("MGMT_RX_PROCESS failed")
+    hapd.set("ext_mgmt_frame_handling", "0")
+    sta = hapd.get_sta(addr)
+    if "[MFP]" not in sta['flags']:
+        raise Exception("MFP flag removed")
+    if sta["AKMSuiteSelector"] != '00-0f-ac-6':
+        raise Exception("AKMSuiteSelector value changed")
+
+def run_ap_pmf_inject_assoc(dev, apdev, wps):
     ssid = "test-pmf"
     params = hostapd.wpa2_params(ssid=ssid, passphrase="12345678")
     params["wpa_key_mgmt"] = "WPA-PSK WPA-PSK-SHA256"
     params["ieee80211w"] = "1"
+    if wps:
+        params["eap_server"] = "1"
+        params["wps_state"] = "2"
+
     hapd = hostapd.add_ap(apdev[0], params)
     dev[0].connect(ssid, psk="12345678", ieee80211w="2",
                    key_mgmt="WPA-PSK-SHA256", proto="WPA2",
@@ -920,48 +943,19 @@ def test_ap_pmf_inject_assoc(dev, apdev):
     addr = dev[0].own_addr().replace(':', '')
 
     # Inject unprotected Association Request frames
-    failed = False
+    assoc1 = "00003a01" + bssid + addr + bssid + '2000' + '31040500' + '0008746573742d706d66' + '010802040b160c121824' + '30140100000fac040100000fac040100000fac020000'
+    assoc2 = "00003a01" + bssid + addr + bssid + '2000' + '31040500' + '0008746573742d706d66' + '010802040b160c121824' + '30140100000fac040100000fac040100000fac060000'
+    assoc3 = "00003a01" + bssid + addr + bssid + '2000' + '31040500' + '0008746573742d706d66' + '010802040b160c121824'
 
-    hapd.set("ext_mgmt_frame_handling", "1")
-    assoc = "00003a01" + bssid + addr + bssid + '2000' + '31040500' + '0008746573742d706d66' + '010802040b160c121824' + '30140100000fac040100000fac040100000fac020000'
-    res = hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % assoc)
-    if "OK" not in res:
-        failed = True
-    hapd.set("ext_mgmt_frame_handling", "0")
-    sta = hapd.get_sta(dev[0].own_addr())
-    if "[MFP]" not in sta['flags']:
-        raise Exception("MFP flag removed")
-    #if sta["AKMSuiteSelector"] != '00-0f-ac-6':
-    #    raise Exception("AKMSuiteSelector value changed")
-
+    inject_assoc_req(hapd, dev[0].own_addr(), assoc1)
     time.sleep(0.1)
-    hapd.set("ext_mgmt_frame_handling", "1")
-    res = hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % assoc)
-    if "OK" not in res:
-        failed = True
-    hapd.set("ext_mgmt_frame_handling", "0")
-    sta = hapd.get_sta(dev[0].own_addr())
-    if "[MFP]" not in sta['flags']:
-        raise Exception("MFP flag removed")
-    if sta["AKMSuiteSelector"] != '00-0f-ac-6':
-        raise Exception("AKMSuiteSelector value changed")
-
+    inject_assoc_req(hapd, dev[0].own_addr(), assoc1)
     time.sleep(0.1)
-    hapd.set("ext_mgmt_frame_handling", "1")
-    assoc = "00003a01" + bssid + addr + bssid + '2000' + '31040500' + '0008746573742d706d66' + '010802040b160c121824' + '30140100000fac040100000fac040100000fac060000'
-    res = hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % assoc)
-    if "OK" not in res:
-        failed = True
-
-    hapd.request("SET ext_mgmt_frame_handling 0")
-    if failed:
-        raise Exception("MGMT_RX_PROCESS failed")
-
-    sta = hapd.get_sta(dev[0].own_addr())
-    if "[MFP]" not in sta['flags']:
-        raise Exception("MFP flag removed")
-    if sta["AKMSuiteSelector"] != '00-0f-ac-6':
-        raise Exception("AKMSuiteSelector value changed")
+    inject_assoc_req(hapd, dev[0].own_addr(), assoc2)
+    time.sleep(0.1)
+    inject_assoc_req(hapd, dev[0].own_addr(), assoc3)
+    time.sleep(0.1)
+    inject_assoc_req(hapd, dev[0].own_addr(), assoc2)
 
     ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=5.1)
     if ev:
@@ -1461,6 +1455,80 @@ def test_ap_pmf_beacon_protection_reconnect(dev, apdev):
     ev = dev[0].wait_event(["CTRL-EVENT-BEACON-LOSS"], timeout=5)
     if ev is not None:
         raise Exception("Beacon loss detected")
+
+def test_ap_pmf_beacon_protection_unicast(dev, apdev):
+    """WPA2-PSK Beacon protection (BIP) and unicast Beacon frame"""
+    try:
+        run_ap_pmf_beacon_protection_unicast(dev, apdev)
+    finally:
+        stop_monitor(apdev[1]["ifname"])
+
+def run_ap_pmf_beacon_protection_unicast(dev, apdev):
+    cipher = "AES-128-CMAC"
+    ssid = "test-beacon-prot"
+    params = hostapd.wpa2_params(ssid=ssid, passphrase="12345678")
+    params["wpa_key_mgmt"] = "WPA-PSK-SHA256"
+    params["ieee80211w"] = "2"
+    params["beacon_prot"] = "1"
+    params["group_mgmt_cipher"] = cipher
+    try:
+        hapd = hostapd.add_ap(apdev[0], params)
+    except Exception as e:
+        if "Failed to enable hostapd interface" in str(e):
+            raise HwsimSkip("Beacon protection not supported")
+        raise
+
+    bssid = hapd.own_addr()
+
+    Wlantest.setup(hapd)
+    wt = Wlantest()
+    wt.flush()
+    wt.add_passphrase("12345678")
+
+    # STA with Beacon protection enabled
+    dev[0].connect(ssid, psk="12345678", ieee80211w="2", beacon_prot="1",
+                   key_mgmt="WPA-PSK-SHA256", proto="WPA2", scan_freq="2412")
+    hapd.wait_sta()
+
+    sock = start_monitor(apdev[1]["ifname"])
+    radiotap = radiotap_build()
+
+    bssid = hapd.own_addr().replace(':', '')
+    addr = dev[0].own_addr().replace(':', '')
+
+    h = "80000000" + addr + bssid + bssid + "0000"
+    h += "c0a0260d27090600"+ "6400" + "1104"
+    h += "0010746573742d626561636f6e2d70726f74"
+    h += "010882848b960c121824"
+    h += "03010"
+    h += "1050400020000"
+    h += "2a0104"
+    h += "32043048606c"
+    h += "30140100000fac040100000fac040100000fac06cc00"
+    h += "3b025100"
+    h += "2d1a0c001bffff000000000000000000000100000000000000000000"
+    h += "3d1601000000000000000000000000000000000000000000"
+    h += "7f0b0400000200000040000010"
+    h += "dd180050f2020101010003a4000027a4000042435e0062322f00"
+
+    frame = binascii.unhexlify(h)
+    h += "4c1006002100000000002b8fab24bcef3bb1" #MME
+    frame2 = binascii.unhexlify(h)
+
+    sock.send(radiotap + frame)
+    ev = dev[0].wait_event(["CTRL-EVENT-UNPROT-BEACON"], timeout=5)
+    if ev is None:
+        raise Exception("Unprotected beacon was not reported")
+    if hapd.own_addr() not in ev:
+        raise Exception("Unexpected BSSID in unproted beacon indication")
+
+    time.sleep(10.1)
+    sock.send(radiotap + frame2)
+    ev = dev[0].wait_event(["CTRL-EVENT-UNPROT-BEACON"], timeout=5)
+    if ev is None:
+        raise Exception("Unprotected beacon was not reported")
+    if hapd.own_addr() not in ev:
+        raise Exception("Unexpected BSSID in unproted beacon indication")
 
 def test_ap_pmf_sta_global_require(dev, apdev):
     """WPA2-PSK AP with PMF optional and wpa_supplicant pmf=2"""

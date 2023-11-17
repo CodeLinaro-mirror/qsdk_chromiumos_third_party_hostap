@@ -260,6 +260,9 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	u16 reason = WLAN_REASON_UNSPECIFIED;
 	int status = WLAN_STATUS_SUCCESS;
 	const u8 *p2p_dev_addr = NULL;
+#ifdef CONFIG_OWE
+	struct hostapd_iface *iface = hapd->iface;
+#endif /* CONFIG_OWE */
 
 	if (addr == NULL) {
 		/*
@@ -339,6 +342,14 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 						 WLAN_REASON_DISASSOC_AP_BUSY);
 			return -1;
 		}
+	}
+
+	if (hapd->conf->wpa && check_sa_query_need(hapd, sta)) {
+		status = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+		p = hostapd_eid_assoc_comeback_time(hapd, sta, p);
+		hostapd_sta_assoc(hapd, addr, reassoc, status, buf, p - buf);
+
+		return 0;
 	}
 
 #ifdef CONFIG_IEEE80211BE
@@ -473,17 +484,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		    os_memcmp(ie + 2, "\x00\x50\xf2\x04", 4) == 0) {
 			struct wpabuf *wps;
 
-			if (check_sa_query_need(hapd, sta)) {
-				status = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
-
-				p = hostapd_eid_assoc_comeback_time(hapd, sta,
-								    p);
-
-				hostapd_sta_assoc(hapd, addr, reassoc, status,
-						  buf, p - buf);
-				return 0;
-			}
-
 			sta->flags |= WLAN_STA_WPS;
 			wps = ieee802_11_vendor_ie_concat(ie, ielen,
 							  WPS_IE_VENDOR_TYPE);
@@ -498,16 +498,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			goto skip_wpa_check;
 		}
 #endif /* CONFIG_WPS */
-
-		if (check_sa_query_need(hapd, sta)) {
-			status = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
-
-			p = hostapd_eid_assoc_comeback_time(hapd, sta, p);
-
-			hostapd_sta_assoc(hapd, addr, reassoc, status, buf,
-					  p - buf);
-			return 0;
-		}
 
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
@@ -785,6 +775,7 @@ skip_wpa_check:
 
 #ifdef CONFIG_OWE
 	if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) &&
+	    !(iface->drv_flags & WPA_DRIVER_FLAGS2_OWE_OFFLOAD_AP) &&
 	    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_OWE &&
 	    elems.owe_dh) {
 		u8 *npos;
@@ -1031,7 +1022,7 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 {
 #ifdef NEED_AP_MLME
 	int channel, chwidth, is_dfs0, is_dfs;
-	u8 seg0_idx = 0, seg1_idx = 0;
+	u8 seg0_idx = 0, seg1_idx = 0, op_class, chan_no;
 	size_t i;
 
 	hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
@@ -1115,9 +1106,9 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 
 	hapd->iconf->channel = channel;
 	hapd->iconf->ieee80211n = ht;
-	if (!ht) {
+	if (!ht)
 		hapd->iconf->ieee80211ac = 0;
-	} else if (hapd->iconf->ch_switch_vht_config) {
+	if (hapd->iconf->ch_switch_vht_config) {
 		/* CHAN_SWITCH VHT config */
 		if (hapd->iconf->ch_switch_vht_config &
 		    CH_SWITCH_VHT_ENABLED)
@@ -1125,28 +1116,35 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		else if (hapd->iconf->ch_switch_vht_config &
 			 CH_SWITCH_VHT_DISABLED)
 			hapd->iconf->ieee80211ac = 0;
-	} else if (hapd->iconf->ch_switch_he_config) {
+	}
+	if (hapd->iconf->ch_switch_he_config) {
 		/* CHAN_SWITCH HE config */
 		if (hapd->iconf->ch_switch_he_config &
-		    CH_SWITCH_HE_ENABLED)
+		    CH_SWITCH_HE_ENABLED) {
 			hapd->iconf->ieee80211ax = 1;
+			if (hapd->iface->freq > 4000 &&
+			    hapd->iface->freq < 5895)
+				hapd->iconf->ieee80211ac = 1;
+		}
 		else if (hapd->iconf->ch_switch_he_config &
 			 CH_SWITCH_HE_DISABLED)
 			hapd->iconf->ieee80211ax = 0;
+	}
 #ifdef CONFIG_IEEE80211BE
-	} else if (hapd->iconf->ch_switch_eht_config) {
+	if (hapd->iconf->ch_switch_eht_config) {
 		/* CHAN_SWITCH EHT config */
 		if (hapd->iconf->ch_switch_eht_config &
 		    CH_SWITCH_EHT_ENABLED) {
 			hapd->iconf->ieee80211be = 1;
 			hapd->iconf->ieee80211ax = 1;
-			if (!is_6ghz_freq(hapd->iface->freq))
+			if (!is_6ghz_freq(hapd->iface->freq) &&
+			    hapd->iface->freq > 4000)
 				hapd->iconf->ieee80211ac = 1;
 		} else if (hapd->iconf->ch_switch_eht_config &
 			   CH_SWITCH_EHT_DISABLED)
 			hapd->iconf->ieee80211be = 0;
-#endif /* CONFIG_IEEE80211BE */
 	}
+#endif /* CONFIG_IEEE80211BE */
 	hapd->iconf->ch_switch_vht_config = 0;
 	hapd->iconf->ch_switch_he_config = 0;
 	hapd->iconf->ch_switch_eht_config = 0;
@@ -1159,6 +1157,10 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		hapd->iconf->ht_capab &= ~HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
 
 	hapd->iconf->secondary_channel = offset;
+	if (ieee80211_freq_to_channel_ext(freq, offset, chwidth,
+					  &op_class, &chan_no) !=
+	    NUM_HOSTAPD_MODES)
+		hapd->iconf->op_class = op_class;
 	hostapd_set_oper_chwidth(hapd->iconf, chwidth);
 	hostapd_set_oper_centr_freq_seg0_idx(hapd->iconf, seg0_idx);
 	hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, seg1_idx);
@@ -2188,6 +2190,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
 	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 
@@ -2306,6 +2309,15 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 				    data->assoc_info.resp_ies_len,
 				    data->assoc_info.link_addr,
 				    data->assoc_info.reassoc);
+		break;
+	case EVENT_PORT_AUTHORIZED:
+		/* Port authorized event for an associated STA */
+		sta = ap_get_sta(hapd, data->port_authorized.sta_addr);
+		if (sta)
+			ap_sta_set_authorized(hapd, sta, 1);
+		else
+			wpa_printf(MSG_DEBUG,
+				   "No STA info matching port authorized event found");
 		break;
 #ifdef CONFIG_OWE
 	case EVENT_UPDATE_DH:
