@@ -517,8 +517,13 @@ TCHAR * wpa_strdup_tchar(const char *str);
 void printf_encode(char *txt, size_t maxlen, const u8 *data, size_t len);
 size_t printf_decode(u8 *buf, size_t maxlen, const char *str);
 
-const char * wpa_ctrl_ssid_txt(const u8 *ssid, size_t ssid_len);
-const char * wpa_ssid_txt(const u8 *ssid, size_t ssid_len);
+const char * wpa_ssid_hash_txt(const u8 *ssid, size_t ssid_len, bool hash);
+#define wpa_ctrl_ssid_txt(ssid, len) wpa_ssid_hash_txt(ssid, len, false)
+#ifndef CHROMIUM
+#define wpa_ssid_txt(ssid, len) wpa_ssid_hash_txt(ssid, len, false)
+#else /* CHROMIUM */
+#define wpa_ssid_txt(ssid, len) wpa_ssid_hash_txt(ssid, len, true)
+#endif /* CHROMIUM */
 
 char * wpa_config_parse_string(const char *value, size_t *len);
 int is_hex(const u8 *data, size_t len);

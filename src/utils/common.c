@@ -11,7 +11,10 @@
 
 #include "common/ieee802_11_defs.h"
 #include "common.h"
-
+#ifdef CHROMIUM
+#include "crypto/crypto.h"
+#include "crypto/sha1.h"
+#endif /* CHROMIUM */
 
 int hex2num(char c)
 {
@@ -604,8 +607,8 @@ size_t printf_decode(u8 *buf, size_t maxlen, const char *str)
 	return len;
 }
 
-#include "crypto/crypto.h"
-#include "crypto/sha1.h"
+
+#ifdef CHROMIUM
 #define WPA_SHA1_TXT_MAX_LEN (12 + 1) /* Intentionally only provide 6 octets */
 
 /**
@@ -647,12 +650,15 @@ static const char * wpa_sha1_txt(const u8 *data, size_t data_len,
 	}
 	return output;
 }
+#endif /* CHROMIUM */
 
 
 /**
- * wpa_ctrl_ssid_txt - Convert SSID to a printable string
+ * wpa_ssid_txt - Hash and convert SSID to a printable string
  * @ssid: SSID (32-octet string)
  * @ssid_len: Length of ssid in octets
+ * @hash: whether or not to hash the SSID to hide the actual value if CHROMIUM
+ * is defined
  * Returns: Pointer to a printable string
  *
  * This function can be used to convert SSIDs into printable form. In most
@@ -663,7 +669,7 @@ static const char * wpa_sha1_txt(const u8 *data, size_t data_len,
  * time, i.e., this is not re-entrant and the returned buffer must be used
  * before calling this again.
  */
-const char * wpa_ctrl_ssid_txt(const u8 *ssid, size_t ssid_len)
+const char * wpa_ssid_hash_txt(const u8 *ssid, size_t ssid_len, bool hash)
 {
 	static char ssid_txt[SSID_MAX_LEN * 4 + 1];
 
@@ -671,35 +677,16 @@ const char * wpa_ctrl_ssid_txt(const u8 *ssid, size_t ssid_len)
 		ssid_txt[0] = '\0';
 		return ssid_txt;
 	}
+
+#ifdef CHROMIUM
+	if (hash) {
+		/* Intentionally only provide 6 octets */
+		return wpa_sha1_txt(ssid, ssid_len, ssid_txt, WPA_SHA1_TXT_MAX_LEN);
+	}
+#endif /* CHROMIUM */
 
 	printf_encode(ssid_txt, sizeof(ssid_txt), ssid, ssid_len);
 	return ssid_txt;
-}
-
-/**
- * wpa_ssid_txt - Hash and convert SSID to a printable string
- * @ssid: SSID (32-octet string)
- * @ssid_len: Length of ssid in octets
- * Returns: Pointer to a printable string
- *
- * This function can be used to hash and convert SSIDs into printable form that
- * does not reveal the actual value of the SSID.
- *
- * This function uses a static buffer, so only one call can be used at the
- * time, i.e., this is not re-entrant and the returned buffer must be used
- * before calling this again.
- */
-const char * wpa_ssid_txt(const u8 *ssid, size_t ssid_len)
-{
-	static char ssid_txt[SSID_MAX_LEN * 4 + 1];
-
-	if (ssid == NULL) {
-		ssid_txt[0] = '\0';
-		return ssid_txt;
-	}
-
-	/* Intentionally only provide 6 octets */
-	return wpa_sha1_txt(ssid, ssid_len, ssid_txt, WPA_SHA1_TXT_MAX_LEN);
 }
 
 
