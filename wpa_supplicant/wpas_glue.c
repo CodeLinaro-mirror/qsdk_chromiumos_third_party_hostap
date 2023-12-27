@@ -947,9 +947,10 @@ const char * wpa_supplicant_ctrl_req_to_string(enum wpa_ctrl_req_type field,
 void wpas_send_ctrl_req(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 			const char *field_name, const char *txt)
 {
-	wpa_msg(wpa_s, MSG_INFO, WPA_CTRL_REQ "%s-%d:%s needed for SSID %s",
-		field_name, ssid->id, txt,
-		wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+	wpa_printf(MSG_INFO, WPA_CTRL_REQ "%s-%d:%s needed for SSID '%s'",
+		field_name, ssid->id, txt, wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+	wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_CTRL_REQ "%s-%d:%s needed for SSID '%s'",
+		field_name, ssid->id, txt, wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
 }
 
 
