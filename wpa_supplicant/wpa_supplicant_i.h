@@ -1184,7 +1184,9 @@ struct wpa_supplicant {
 	struct wpa_ssid *bgscan_ssid;
 	const struct bgscan_ops *bgscan;
 	void *bgscan_priv;
+#ifdef CHROMIUM
 	int signal_threshold;
+#endif /* CHROMIUM */
 
 	const struct autoscan_ops *autoscan;
 	struct wpa_driver_scan_params *autoscan_params;

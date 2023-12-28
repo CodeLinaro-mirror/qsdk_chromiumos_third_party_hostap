@@ -2422,6 +2422,7 @@ static int wpa_scan_result_compar(const void *a, const void *b)
 		snr_b = snr_b_full = wb->level;
 	}
 
+#ifdef CHROMIUM
 	/*
 	 * Short-circuit scan result sorting logic to bias towards the 6GHz
 	 * band.
@@ -2435,6 +2436,7 @@ static int wpa_scan_result_compar(const void *a, const void *b)
 			return 1;
 		}
 	}
+#endif /* CHROMIUM */
 
 	/* If SNR is close, decide by max rate or frequency band. For cases
 	 * involving the 6 GHz band, use the throughput estimate irrespective

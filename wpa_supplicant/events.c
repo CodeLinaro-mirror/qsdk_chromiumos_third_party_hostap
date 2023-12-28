@@ -2072,6 +2072,186 @@ wpas_get_est_throughput_from_bss_snr(const struct wpa_supplicant *wpa_s,
 				&max_cw);
 }
 
+
+#ifndef CHROMIUM
+int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+					   struct wpa_bss *current_bss,
+					   struct wpa_bss *selected)
+{
+	int min_diff, diff;
+	int to_5ghz, to_6ghz;
+	int cur_level, sel_level;
+	unsigned int cur_est, sel_est;
+	struct wpa_signal_info si;
+	int cur_snr = 0;
+	int ret = 0;
+	const u8 *cur_ies = wpa_bss_ie_ptr(current_bss);
+	const u8 *sel_ies = wpa_bss_ie_ptr(selected);
+	size_t cur_ie_len = current_bss->ie_len ? current_bss->ie_len :
+		current_bss->beacon_ie_len;
+	size_t sel_ie_len = selected->ie_len ? selected->ie_len :
+		selected->beacon_ie_len;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Considering within-ESS reassociation");
+	wpa_dbg(wpa_s, MSG_DEBUG, "Current BSS: " MACSTR
+		" freq=%d level=%d snr=%d est_throughput=%u",
+		MAC2STR(current_bss->bssid),
+		current_bss->freq, current_bss->level,
+		current_bss->snr, current_bss->est_throughput);
+	wpa_dbg(wpa_s, MSG_DEBUG, "Selected BSS: " MACSTR
+		" freq=%d level=%d snr=%d est_throughput=%u",
+		MAC2STR(selected->bssid), selected->freq, selected->level,
+		selected->snr, selected->est_throughput);
+
+	if (wpa_s->current_ssid->bssid_set &&
+	    os_memcmp(selected->bssid, wpa_s->current_ssid->bssid, ETH_ALEN) ==
+	    0) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Allow reassociation - selected BSS "
+			"has preferred BSSID");
+		return 1;
+	}
+
+	/*
+	 * Try to poll the signal from the driver since this will allow to get
+	 * more accurate values. In some cases, there can be big differences
+	 * between the RSSI of the Probe Response frames of the AP we are
+	 * associated with and the Beacon frames we hear from the same AP after
+	 * association. This can happen, e.g., when there are two antennas that
+	 * hear the AP very differently. If the driver chooses to hear the
+	 * Probe Response frames during the scan on the "bad" antenna because
+	 * it wants to save power, but knows to choose the other antenna after
+	 * association, we will hear our AP with a low RSSI as part of the
+	 * scan even when we can hear it decently on the other antenna. To cope
+	 * with this, ask the driver to teach us how it hears the AP. Also, the
+	 * scan results may be a bit old, since we can very quickly get fresh
+	 * information about our currently associated AP.
+	 */
+	if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
+	    (si.data.avg_beacon_signal || si.data.avg_signal)) {
+		/*
+		 * Normalize avg_signal to the RSSI over 20 MHz, as the
+		 * throughput is estimated based on the RSSI over 20 MHz
+		 */
+		cur_level = si.data.avg_beacon_signal ?
+			si.data.avg_beacon_signal :
+			(si.data.avg_signal -
+			 wpas_channel_width_rssi_bump(cur_ies, cur_ie_len,
+						      si.chanwidth));
+		cur_snr = wpas_get_snr_signal_info(si.frequency, cur_level,
+						   si.current_noise);
+
+		cur_est = wpas_get_est_throughput_from_bss_snr(wpa_s,
+							       current_bss,
+							       cur_snr);
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Using signal poll values for the current BSS: level=%d snr=%d est_throughput=%u",
+			cur_level, cur_snr, cur_est);
+	} else {
+		/* Level and SNR are measured over 20 MHz channel */
+		cur_level = current_bss->level;
+		cur_snr = current_bss->snr;
+		cur_est = current_bss->est_throughput;
+	}
+
+	/* Adjust the SNR of BSSes based on the channel width. */
+	cur_level += wpas_channel_width_rssi_bump(cur_ies, cur_ie_len,
+						  current_bss->max_cw);
+	cur_snr = wpas_adjust_snr_by_chanwidth(cur_ies, cur_ie_len,
+					       current_bss->max_cw, cur_snr);
+
+	sel_est = selected->est_throughput;
+	sel_level = selected->level +
+		wpas_channel_width_rssi_bump(sel_ies, sel_ie_len,
+					     selected->max_cw);
+
+	if (sel_est > cur_est + 5000) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Allow reassociation - selected BSS has better estimated throughput");
+		return 1;
+	}
+
+	to_5ghz = selected->freq > 4000 && current_bss->freq < 4000;
+	to_6ghz = is_6ghz_freq(selected->freq) &&
+		!is_6ghz_freq(current_bss->freq);
+
+	if (cur_level < 0 &&
+	    cur_level > sel_level + to_5ghz * 2 + to_6ghz * 2 &&
+	    sel_est < cur_est * 1.2) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Skip roam - Current BSS has better "
+			"signal level");
+		return 0;
+	}
+
+	if (cur_est > sel_est + 5000) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Skip roam - Current BSS has better estimated throughput");
+		return 0;
+	}
+
+	if (cur_snr > GREAT_SNR) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Skip roam - Current BSS has good SNR (%u > %u)",
+			cur_snr, GREAT_SNR);
+		return 0;
+	}
+
+	if (cur_level < -85) /* ..-86 dBm */
+		min_diff = 1;
+	else if (cur_level < -80) /* -85..-81 dBm */
+		min_diff = 2;
+	else if (cur_level < -75) /* -80..-76 dBm */
+		min_diff = 3;
+	else if (cur_level < -70) /* -75..-71 dBm */
+		min_diff = 4;
+	else if (cur_level < 0) /* -70..-1 dBm */
+		min_diff = 5;
+	else /* unspecified units (not in dBm) */
+		min_diff = 2;
+
+	if (cur_est > sel_est * 1.5)
+		min_diff += 10;
+	else if (cur_est > sel_est * 1.2)
+		min_diff += 5;
+	else if (cur_est > sel_est * 1.1)
+		min_diff += 2;
+	else if (cur_est > sel_est)
+		min_diff++;
+	else if (sel_est > cur_est * 1.5)
+		min_diff -= 10;
+	else if (sel_est > cur_est * 1.2)
+		min_diff -= 5;
+	else if (sel_est > cur_est * 1.1)
+		min_diff -= 2;
+	else if (sel_est > cur_est)
+		min_diff--;
+
+	if (to_5ghz)
+		min_diff -= 2;
+	if (to_6ghz)
+		min_diff -= 2;
+	diff = sel_level - cur_level;
+	if (diff < min_diff) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Skip roam - too small difference in signal level (%d < %d)",
+			diff, min_diff);
+		ret = 0;
+	} else {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Allow reassociation due to difference in signal level (%d >= %d)",
+			diff, min_diff);
+		ret = 1;
+	}
+	wpa_msg_ctrl(wpa_s, MSG_INFO, "%scur_bssid=" MACSTR
+		     " cur_freq=%d cur_level=%d cur_est=%d sel_bssid=" MACSTR
+		     " sel_freq=%d sel_level=%d sel_est=%d",
+		     ret ? WPA_EVENT_DO_ROAM : WPA_EVENT_SKIP_ROAM,
+		     MAC2STR(current_bss->bssid),
+		     current_bss->freq, cur_level, cur_est,
+		     MAC2STR(selected->bssid),
+		     selected->freq, sel_level, sel_est);
+	return ret;
+}
+#else /* CHROMIUM */
 static int wpas_evaluate_band_score(int frequency) {
 	if (is_6ghz_freq(frequency)) {
 		return 2;
@@ -2080,6 +2260,7 @@ static int wpas_evaluate_band_score(int frequency) {
 	}
 	return 0;
 }
+
 
 int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 					   struct wpa_bss *current_bss,
@@ -2280,7 +2461,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		     selected->freq, sel_level, sel_est);
 	return ret;
 }
-
+#endif /* CHROMIUM */
 #endif /* CONFIG_NO_ROAMING */
 
 
