@@ -9457,21 +9457,21 @@ static int wpas_p2p_nfc_connection_handover(struct wpa_supplicant *wpa_s,
 	if (params.next_step == PEER_CLIENT) {
 		if (!is_zero_ether_addr(params.go_dev_addr)) {
 			wpa_printf(MSG_INFO, P2P_EVENT_NFC_PEER_CLIENT
-				"peer=" MACSTR " freq=%d go_dev_addr=" MACSTR
-				" ssid=\"%s\"",
-				MAC2STR(params.peer->p2p_device_addr),
-				params.go_freq,
-				MAC2STR(params.go_dev_addr),
-				wpa_ssid_txt(params.go_ssid,
-					     params.go_ssid_len));
+				   "peer=" MACSTR " freq=%d go_dev_addr=" MACSTR
+				   " ssid=\"%s\"",
+				   MAC2STR(params.peer->p2p_device_addr),
+				   params.go_freq,
+				   MAC2STR(params.go_dev_addr),
+				   wpa_ssid_txt(params.go_ssid,
+						params.go_ssid_len));
 			wpa_msg_ctrl(wpa_s, MSG_INFO, P2P_EVENT_NFC_PEER_CLIENT
-				"peer=" MACSTR " freq=%d go_dev_addr=" MACSTR
-				" ssid=\"%s\"",
-				MAC2STR(params.peer->p2p_device_addr),
-				params.go_freq,
-				MAC2STR(params.go_dev_addr),
-				wpa_ctrl_ssid_txt(params.go_ssid,
-					     params.go_ssid_len));
+				     "peer=" MACSTR " freq=%d go_dev_addr="
+				     MACSTR " ssid=\"%s\"",
+				     MAC2STR(params.peer->p2p_device_addr),
+				     params.go_freq,
+				     MAC2STR(params.go_dev_addr),
+				     wpa_ctrl_ssid_txt(params.go_ssid,
+						       params.go_ssid_len));
 		} else {
 			wpa_msg(wpa_s, MSG_INFO, P2P_EVENT_NFC_PEER_CLIENT
 				"peer=" MACSTR " freq=%d",

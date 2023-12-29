@@ -1580,11 +1580,12 @@ static int wpas_dpp_handle_config_obj(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONF_RECEIVED);
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_AKM "%s",
 		dpp_akm_str(conf->akm));
-	if (conf->ssid_len)
+	if (conf->ssid_len) {
 		wpa_printf(MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
 			   wpa_ssid_txt(conf->ssid, conf->ssid_len));
 		wpa_msg_ctrl(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID "%s",
 			     wpa_ctrl_ssid_txt(conf->ssid, conf->ssid_len));
+	}
 	if (conf->ssid_charset)
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_CONFOBJ_SSID_CHARSET "%d",
 			conf->ssid_charset);

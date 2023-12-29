@@ -8666,7 +8666,7 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s, const char *reason,
 		     "id=%d ssid=\"%s\" auth_failures=%u duration=%d reason=%s",
 		     ssid->id, wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len),
 		     ssid->auth_failures, dur, reason);
-	
+
 	if (bssid)
 		os_memcpy(ssid->disabled_due_to, bssid, ETH_ALEN);
 }
@@ -8684,7 +8684,8 @@ void wpas_clear_temp_disabled(struct wpa_supplicant *wpa_s,
 			   ssid->id, wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
 		wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_REENABLED
 			     "id=%d ssid=\"%s\"",
-			     ssid->id, wpa_ctrl_ssid_txt(ssid->ssid, ssid->ssid_len));
+			     ssid->id, wpa_ctrl_ssid_txt(ssid->ssid,
+							 ssid->ssid_len));
 	}
 	ssid->disabled_until.sec = 0;
 	ssid->disabled_until.usec = 0;

@@ -1136,13 +1136,14 @@ static void hostapd_dpp_handle_config_obj(struct hostapd_data *hapd,
 	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONF_RECEIVED);
 	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONFOBJ_AKM "%s",
 		dpp_akm_str(conf->akm));
-	if (conf->ssid_len)
+	if (conf->ssid_len) {
 		wpa_printf(MSG_INFO,
 			   DPP_EVENT_CONFOBJ_SSID "%s",
 			   wpa_ssid_txt(conf->ssid, conf->ssid_len));
 		wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO,
 			     DPP_EVENT_CONFOBJ_SSID "%s",
 			     wpa_ctrl_ssid_txt(conf->ssid, conf->ssid_len));
+	}
 	if (conf->connector) {
 		/* TODO: Save the Connector and consider using a command
 		 * to fetch the value instead of sending an event with
@@ -1649,13 +1650,13 @@ static void hostapd_dpp_rx_conn_status_result(struct hostapd_data *hapd,
 	status = dpp_conn_status_result_rx(auth, hdr, buf, len,
 					   ssid, &ssid_len, &channel_list);
 	wpa_printf(MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
-		"result=%d ssid=%s channel_list=%s",
-		status, wpa_ssid_txt(ssid, ssid_len),
-		channel_list ? channel_list : "N/A");
+		   "result=%d ssid=%s channel_list=%s",
+		   status, wpa_ssid_txt(ssid, ssid_len),
+		   channel_list ? channel_list : "N/A");
 	wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONN_STATUS_RESULT
-		"result=%d ssid=%s channel_list=%s",
-		status, wpa_ctrl_ssid_txt(ssid, ssid_len),
-		channel_list ? channel_list : "N/A");
+		   "result=%d ssid=%s channel_list=%s",
+		   status, wpa_ctrl_ssid_txt(ssid, ssid_len),
+		   channel_list ? channel_list : "N/A");
 	os_free(channel_list);
 	hostapd_drv_send_action_cancel_wait(hapd);
 	hostapd_dpp_listen_stop(hapd);

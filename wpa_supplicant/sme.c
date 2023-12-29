@@ -1226,7 +1226,7 @@ no_fils:
 
 	wpa_printf(MSG_INFO, "SME: Trying to authenticate with " MACSTR
 		   " (SSID='%s' freq=%d MHz)", MAC2STR(params.bssid),
-		wpa_ssid_txt(params.ssid, params.ssid_len), params.freq);
+		   wpa_ssid_txt(params.ssid, params.ssid_len), params.freq);
 	wpa_msg_ctrl(wpa_s, MSG_INFO, "SME: Trying to authenticate with " MACSTR
 		     " (SSID='%s' freq=%d MHz)", MAC2STR(params.bssid),
 		     wpa_ctrl_ssid_txt(params.ssid, params.ssid_len), params.freq);

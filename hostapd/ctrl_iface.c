@@ -1043,7 +1043,7 @@ static int hostapd_ctrl_iface_get_config(struct hostapd_data *hapd,
 			ret = os_snprintf(pos, end - pos,
 					  "multi_ap_backhaul_ssid=%s\n",
 					  wpa_ctrl_ssid_txt(ssid->ssid,
-						       ssid->ssid_len));
+							    ssid->ssid_len));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
