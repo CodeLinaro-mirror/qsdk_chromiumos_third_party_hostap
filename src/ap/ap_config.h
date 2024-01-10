@@ -1171,6 +1171,7 @@ struct hostapd_config {
 	enum oper_chan_width eht_oper_chwidth;
 	u8 eht_oper_centr_freq_seg0_idx;
 	struct eht_phy_capabilities_info eht_phy_capab;
+	int require_eht;
 	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
 	u8 punct_acs_threshold;
 #endif /* CONFIG_IEEE80211BE */
