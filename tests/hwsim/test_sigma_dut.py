@@ -1078,8 +1078,14 @@ def test_sigma_dut_ap_sae_pw_id(dev, apdev, params):
                 dev[0].connect("test-sae", key_mgmt="SAE", sae_password=pw,
                                sae_password_id=pw_id,
                                ieee80211w="2", scan_freq="2412")
+                # Allow some time for AP to complete handling of connection
+                # before disconnecting.
+                time.sleep(0.1)
                 dev[0].request("REMOVE_NETWORK all")
                 dev[0].wait_disconnected()
+                # Allow some time for AP to complete handling of disconnection
+                # before trying SAE again.
+                time.sleep(0.1)
 
             sigma_dut_cmd_check("ap_reset_default")
         finally:
@@ -1148,8 +1154,14 @@ def test_sigma_dut_ap_sae_pw_id_ft(dev, apdev, params):
                 dev[0].connect("test-sae", key_mgmt=key_mgmt, sae_password=pw,
                                sae_password_id=pw_id,
                                ieee80211w="2", scan_freq="2412")
+                # Allow some time for AP to complete handling of connection
+                # before disconnecting.
+                time.sleep(0.1)
                 dev[0].request("REMOVE_NETWORK all")
                 dev[0].wait_disconnected()
+                # Allow some time for AP to complete handling of disconnection
+                # before trying SAE again.
+                time.sleep(0.1)
 
             sigma_dut_cmd_check("ap_reset_default")
         finally:
@@ -1898,6 +1910,10 @@ def dpp_resp_conf_mutual(dev, conf_id, uri):
         ev = dev.wait_event(["DPP-SCAN-PEER-QR-CODE"], timeout=10)
         if ev is None:
             raise Exception("QR Code scan for mutual authentication not requested")
+        ev = dev.wait_event(["DPP-TX-STATUS"], timeout=10)
+        if ev is None:
+            raise Exception("No TX status for response-pending")
+        time.sleep(0.1)
         dev.dpp_qr_code(uri)
     ev = dev.wait_event(["DPP-CONF-SENT"], timeout=10)
     if ev is None:
@@ -2720,6 +2736,7 @@ def run_sigma_dut_dpp_pkex_responder(dev, apdev, v1=False):
         t.start()
         dppbs = "PKEXv1" if v1 else "PKEX"
         res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,AutomaticDPP,DPPAuthRole,Responder,DPPProvisioningRole,Configurator,DPPConfIndex,1,DPPSigningKeyECC,P-256,DPPConfEnrolleeRole,STA,DPPBS,%s,DPPPKEXCodeIdentifier,test,DPPPKEXCode,secret,DPPTimeout,16" % dppbs, timeout=20)
+        t.join()
         if "BootstrapResult,OK,AuthResult,OK,ConfResult,OK" not in res:
             raise Exception("Unexpected result: " + res)
     finally:
@@ -3583,7 +3600,8 @@ def run_sigma_dut_ap_dpp_relay(dev, apdev):
     res = sigma_dut_cmd_check("dev_exec_action,program,DPP,DPPActionType,GetLocalBootstrap,DPPCryptoIdentifier,P-256,DPPBS,QR")
 
     dev[0].dpp_auth_init(uri=uri_c, role="enrollee")
-    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0])
+    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0],
+                      timeout=10)
 
     sigma_dut_cmd_check("ap_reset_default")
 
@@ -4066,7 +4084,7 @@ def test_sigma_dut_dpp_reconfig_enrollee(dev, apdev):
             raise Exception("Failed to start listen operation")
         dev[1].dump_monitor()
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,6,DPPWaitForConnect,Yes", timeout=10)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,16,DPPWaitForConnect,Yes", timeout=20)
         if "status,COMPLETE,ReconfigAuthResult,OK,ConfResult,OK,NetworkConnectResult,OK" not in res:
             raise Exception("Unexpected reconfiguration result: " + res)
 
@@ -4088,7 +4106,7 @@ def test_sigma_dut_dpp_reconfig_enrollee(dev, apdev):
         dev[0].dump_monitor()
         dev[1].dump_monitor()
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,6,DPPWaitForConnect,Yes", timeout=30)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,16,DPPWaitForConnect,Yes", timeout=30)
         if "status,COMPLETE,ReconfigAuthResult,OK,ConfResult,OK,NetworkConnectResult,OK" not in res:
             raise Exception("Unexpected reconfiguration [2] result: " + res)
 
@@ -4147,7 +4165,7 @@ def test_sigma_dut_dpp_reconfig_enrollee_sae(dev, apdev):
             raise Exception("Failed to start listen operation")
         dev[1].dump_monitor()
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,6,DPPWaitForConnect,Yes", timeout=10)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,16,DPPWaitForConnect,Yes", timeout=20)
         if "status,COMPLETE,ReconfigAuthResult,OK,ConfResult,OK,NetworkConnectResult,OK" not in res:
             raise Exception("Unexpected reconfiguration result: " + res)
 
@@ -4169,7 +4187,7 @@ def test_sigma_dut_dpp_reconfig_enrollee_sae(dev, apdev):
         dev[0].dump_monitor()
         dev[1].dump_monitor()
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,6,DPPWaitForConnect,Yes", timeout=30)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPTimeout,16,DPPWaitForConnect,Yes", timeout=30)
         if "status,COMPLETE,ReconfigAuthResult,OK,ConfResult,OK,NetworkConnectResult,OK" not in res:
             raise Exception("Unexpected reconfiguration [2] result: " + res)
 
@@ -4221,7 +4239,7 @@ def test_sigma_dut_dpp_reconfig_configurator(dev, apdev):
         if "OK" not in dev[1].request(cmd):
             raise Exception("Failed to start reconfiguration")
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPProvisioningRole,Configurator,DPPConfEnrolleeRole,STA,DPPSigningKeyECC,P-256,DPPConfIndex,2,DPPListenChannel,6,DPPTimeout,6", timeout=10)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPProvisioningRole,Configurator,DPPConfEnrolleeRole,STA,DPPSigningKeyECC,P-256,DPPConfIndex,2,DPPListenChannel,6,DPPTimeout,16", timeout=20)
         if "status,COMPLETE,ReconfigAuthResult,OK,ConfResult,OK" not in res:
             raise Exception("Unexpected reconfiguration result: " + res)
 
@@ -4279,7 +4297,7 @@ def run_sigma_dut_dpp_reconfig_proto(dev, apdev, dpp_step):
         if "OK" not in dev[1].request(cmd):
             raise Exception("Failed to start reconfiguration")
 
-        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPProvisioningRole,Configurator,DPPConfEnrolleeRole,STA,DPPSigningKeyECC,P-256,DPPConfIndex,2,DPPStep,%s,DPPFrameType,ReconfigAuthRequest,DPPIEAttribute,ProtocolVersion,DPPListenChannel,6,DPPTimeout,6" % dpp_step, timeout=10)
+        res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,DPPReconfigure,DPPProvisioningRole,Configurator,DPPConfEnrolleeRole,STA,DPPSigningKeyECC,P-256,DPPConfIndex,2,DPPStep,%s,DPPFrameType,ReconfigAuthRequest,DPPIEAttribute,ProtocolVersion,DPPListenChannel,6,DPPTimeout,16" % dpp_step, timeout=20)
         if "status,COMPLETE,ReconfigAuthResult,Errorsent" not in res:
             raise Exception("Unexpected reconfiguration result: " + res)
 
@@ -5687,6 +5705,12 @@ def run_sigma_dut_ap_channel(dev, apdev, params, channel, mode, scan_freq,
         sigma = start_sigma_dut(iface, hostapd_logdir=logdir)
         try:
             subprocess.call(['iw', 'reg', 'set', 'US'])
+            for i in range(5):
+                ev = dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=5)
+                if ev is None:
+                    break
+                if "alpha2=US" in ev:
+                    break
             cmd = "ap_reset_default"
             if program:
                 cmd += ",program," + program

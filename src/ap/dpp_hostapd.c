@@ -1418,7 +1418,7 @@ static void hostapd_dpp_rx_auth_resp(struct hostapd_data *hapd, const u8 *src,
 	}
 
 	if (!is_zero_ether_addr(auth->peer_mac_addr) &&
-	    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1468,7 +1468,7 @@ static void hostapd_dpp_rx_auth_conf(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1577,7 +1577,7 @@ static void hostapd_dpp_rx_conf_result(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1867,7 +1867,7 @@ hostapd_dpp_rx_reconfig_auth_resp(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2142,7 +2142,7 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
 				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
@@ -2916,7 +2916,7 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
 				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
@@ -3082,7 +3082,7 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 
 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR, MAC2STR(sa));
 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
-	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(sa, auth->peer_mac_addr)) {
 #ifdef CONFIG_DPP2
 		if (dpp_relay_rx_gas_req(hapd->iface->interfaces->dpp, sa, data,
 				     data_len) == 0) {
@@ -3103,6 +3103,13 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 		 * exchange. */
 		dpp_notify_auth_success(hapd->dpp_auth, 1);
 		hapd->dpp_auth_ok_on_ack = 0;
+#ifdef CONFIG_TESTING_OPTIONS
+		if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
+			wpa_printf(MSG_INFO,
+				   "DPP: TESTING - stop at Authentication Confirm");
+			return NULL;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 	}
 
 	wpa_hexdump(MSG_DEBUG,

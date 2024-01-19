@@ -797,7 +797,6 @@ class WpaSupplicant:
                 if expect_failure:
                     return None
                 raise Exception("Group formation timed out")
-        self.dump_monitor()
         return self.group_form_result(ev, expect_failure, go_neg_res)
 
     def p2p_go_neg_init(self, peer, pin, method, timeout=0, go_intent=None,
@@ -1069,7 +1068,7 @@ class WpaSupplicant:
         if tspecs:
             raise Exception("DELTS failed (still in tspec list)")
 
-    def connect(self, ssid=None, ssid2=None, **kwargs):
+    def connect(self, ssid=None, ssid2=None, timeout=None, **kwargs):
         logger.info("Connect STA " + self.ifname + " to AP")
         id = self.add_network()
         if ssid:
@@ -1121,6 +1120,12 @@ class WpaSupplicant:
             if field in kwargs and kwargs[field]:
                 self.set_network(id, field, kwargs[field])
 
+        if timeout is None:
+            if "eap" in kwargs:
+                timeout=20
+            else:
+                timeout=15
+
         known_args = {"raw_psk", "password_hex", "peerkey", "okc", "ocsp",
                       "only_add_network", "wait_connect", "raw_identity"}
         unknown = set(kwargs.keys())
@@ -1145,10 +1150,7 @@ class WpaSupplicant:
         if "only_add_network" in kwargs and kwargs['only_add_network']:
             return id
         if "wait_connect" not in kwargs or kwargs['wait_connect']:
-            if "eap" in kwargs:
-                self.connect_network(id, timeout=20)
-            else:
-                self.connect_network(id, timeout=15)
+            self.connect_network(id, timeout=timeout)
         else:
             self.dump_monitor()
             self.select_network(id)
@@ -1194,8 +1196,15 @@ class WpaSupplicant:
         raise Exception("Could not find BSS " + bssid + " in scan")
 
     def flush_scan_cache(self, freq=2417):
-        self.request("BSS_FLUSH 0")
-        self.scan(freq=freq, only_new=True)
+        for i in range(3):
+            self.request("BSS_FLUSH 0")
+            try:
+                self.scan(freq=freq, only_new=True)
+            except Exception as e:
+                if i < 2:
+                    logger.info("flush_scan_cache: Failed to start scan: " + str(e))
+                    self.request("ABORT_SCAN")
+                    time.sleep(0.1)
         res = self.request("SCAN_RESULTS")
         if len(res.splitlines()) > 1:
             logger.debug("Scan results remaining after first attempt to flush the results:\n" + res)
@@ -1553,6 +1562,7 @@ class WpaSupplicant:
         work_started = "dpp-listen@" + self.ifname + ":" + str(freq) + ":1"
         for i in range(10):
             if work_started in self.request("RADIO_WORK show"):
+                time.sleep(0.0005)
                 return
             time.sleep(0.01)
         raise Exception("Failed to start DPP listen work")
@@ -1696,3 +1706,30 @@ class WpaSupplicant:
             vals['kdk'] = kdk
             return vals
         return None
+
+    def wait_sta(self, addr=None, timeout=2, wait_4way_hs=False):
+        ev = self.wait_group_event(["AP-STA-CONNECT"], timeout=timeout)
+        if ev is None:
+            ev = self.wait_event(["AP-STA-CONNECT"], timeout=timeout)
+            if ev is None:
+                raise Exception("AP did not report STA connection")
+        if addr and addr not in ev:
+            raise Exception("Unexpected STA address in connection event: " + ev)
+        if wait_4way_hs:
+            ev2 = self.wait_group_event(["EAPOL-4WAY-HS-COMPLETED"],
+                                        timeout=timeout)
+            if ev2 is None:
+                raise Exception("AP did not report 4-way handshake completion")
+            if addr and addr not in ev2:
+                raise Exception("Unexpected STA address in 4-way handshake completion event: " + ev2)
+        return ev
+
+    def wait_sta_disconnect(self, addr=None, timeout=2):
+        ev = self.wait_group_event(["AP-STA-DISCONNECT"], timeout=timeout)
+        if ev is None:
+            ev = self.wait_event(["AP-STA-CONNECT"], timeout=timeout)
+            if ev is None:
+                raise Exception("AP did not report STA disconnection")
+        if addr and addr not in ev:
+            raise Exception("Unexpected STA address in disconnection event: " + ev)
+        return ev

@@ -983,6 +983,11 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
 	os_memset(&csa_settings, 0, sizeof(csa_settings));
 	csa_settings.cs_count = 5;
 	csa_settings.block_tx = 1;
+	csa_settings.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->bss[0]->conf->mld_ap)
+		csa_settings.link_id = iface->bss[0]->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_MESH
 	if (iface->mconf)
 		ieee80211_mode = IEEE80211_MODE_MESH;
@@ -1044,7 +1049,7 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
 }
 
 
-static void hostpad_dfs_update_background_chain(struct hostapd_iface *iface)
+static void hostapd_dfs_update_background_chain(struct hostapd_iface *iface)
 {
 	int sec = 0;
 	enum dfs_channel_type channel_type = DFS_NO_CAC_YET;
@@ -1119,7 +1124,7 @@ hostapd_dfs_start_channel_switch_background(struct hostapd_iface *iface)
 	hostapd_set_oper_centr_freq_seg1_idx(
 		iface->conf, iface->radar_background.centr_freq_seg1_idx);
 
-	hostpad_dfs_update_background_chain(iface);
+	hostapd_dfs_update_background_chain(iface);
 
 	return hostapd_dfs_request_channel_switch(
 		iface, iface->conf->channel, iface->freq,
@@ -1183,7 +1188,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
 		}
 	} else if (hostapd_dfs_is_background_event(iface, freq)) {
 		iface->radar_background.cac_started = 0;
-		hostpad_dfs_update_background_chain(iface);
+		hostapd_dfs_update_background_chain(iface);
 	}
 
 	return 0;
@@ -1317,7 +1322,7 @@ hostapd_dfs_background_start_channel_switch(struct hostapd_iface *iface,
 		 * Just select a new random channel according to the
 		 * regulations for monitoring.
 		 */
-		hostpad_dfs_update_background_chain(iface);
+		hostapd_dfs_update_background_chain(iface);
 		return 0;
 	}
 
@@ -1479,7 +1484,7 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
 	} else if (dfs_use_radar_background(iface) &&
 		   iface->radar_background.channel == -1) {
 		/* Reset radar background chain if disabled */
-		hostpad_dfs_update_background_chain(iface);
+		hostapd_dfs_update_background_chain(iface);
 	}
 
 	return 0;

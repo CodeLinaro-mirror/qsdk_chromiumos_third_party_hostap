@@ -595,6 +595,15 @@ struct wpa_authenticator * wpa_init(const u8 *addr,
 	}
 #endif /* CONFIG_P2P */
 
+	if (conf->tx_bss_auth && conf->beacon_prot) {
+		conf->tx_bss_auth->non_tx_beacon_prot = true;
+		if (!conf->tx_bss_auth->conf.beacon_prot)
+			conf->tx_bss_auth->conf.beacon_prot = true;
+		if (!conf->tx_bss_auth->conf.group_mgmt_cipher)
+			conf->tx_bss_auth->conf.group_mgmt_cipher =
+				conf->group_mgmt_cipher;
+	}
+
 	return wpa_auth;
 }
 
@@ -3169,7 +3178,7 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
 
 	/* MLD MAC address must be the same */
 	if (!kde->mac_addr ||
-	    os_memcmp(kde->mac_addr, sm->peer_mld_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(kde->mac_addr, sm->peer_mld_addr)) {
 		wpa_printf(MSG_DEBUG, "RSN: MLD: Invalid MLD address");
 		return -1;
 	}
@@ -3196,8 +3205,8 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
 			return -1;
 		}
 
-		if (os_memcmp(sm->mld_links[i].peer_addr, kde->mlo_link[i] + 1,
-			      ETH_ALEN) != 0) {
+		if (!ether_addr_equal(sm->mld_links[i].peer_addr,
+				      kde->mlo_link[i] + 1)) {
 			wpa_printf(MSG_DEBUG,
 				   "RSN: MLD: invalid MAC address=" MACSTR
 				   " expected " MACSTR " (link ID %u)",
@@ -3566,14 +3575,18 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING2)
 static int ieee80211w_kde_len(struct wpa_state_machine *sm)
 {
 	size_t len = 0;
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
 
 	if (sm->mgmt_frame_prot) {
 		len += 2 + RSN_SELECTOR_LEN + WPA_IGTK_KDE_PREFIX_LEN;
-		len += wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
+		len += wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
 	}
+
+	if (wpa_auth->conf.tx_bss_auth)
+		wpa_auth = wpa_auth->conf.tx_bss_auth;
 	if (sm->mgmt_frame_prot && sm->wpa_auth->conf.beacon_prot) {
 		len += 2 + RSN_SELECTOR_LEN + WPA_BIGTK_KDE_PREFIX_LEN;
-		len += wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
+		len += wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
 	}
 
 	return len;
@@ -3586,7 +3599,8 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
 	struct wpa_bigtk_kde bigtk;
 	struct wpa_group *gsm = sm->group;
 	u8 rsc[WPA_KEY_RSC_LEN];
-	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+	struct wpa_auth_config *conf = &wpa_auth->conf;
 	size_t len = wpa_cipher_key_len(conf->group_mgmt_cipher);
 
 	if (!sm->mgmt_frame_prot)
@@ -3618,7 +3632,14 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
 			  NULL, 0);
 	forced_memzero(&igtk, sizeof(igtk));
 
-	if (!conf->beacon_prot)
+	if (wpa_auth->conf.tx_bss_auth) {
+		wpa_auth = wpa_auth->conf.tx_bss_auth;
+		conf = &wpa_auth->conf;
+		len = wpa_cipher_key_len(conf->group_mgmt_cipher);
+		gsm = wpa_auth->group;
+	}
+
+	if (!sm->wpa_auth->conf.beacon_prot)
 		return pos;
 
 	bigtk.keyid[0] = gsm->GN_bigtk;
@@ -3776,6 +3797,11 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 	if (!beacon_prot)
 		return;
 
+	if (a->conf.tx_bss_auth) {
+		a = a->conf.tx_bss_auth;
+		gsm = a->group;
+	}
+
 	info->bigtkidx = gsm->GN_bigtk;
 	info->bigtk = gsm->BIGTK[gsm->GN_bigtk - 6];
 
@@ -3798,6 +3824,7 @@ static void wpa_auth_get_ml_key_info(struct wpa_authenticator *wpa_auth,
 
 static size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm)
 {
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
 	struct wpa_group *gsm = sm->group;
 	size_t gtk_len = gsm->GTK_len;
 	size_t igtk_len;
@@ -3816,10 +3843,15 @@ static size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm)
 		return kde_len;
 
 	/* MLO IGTK KDE for each link */
-	igtk_len = wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
+	igtk_len = wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
 	kde_len += n_links * (2 + RSN_SELECTOR_LEN + 2 + 6 + 1 + igtk_len);
 
-	if (!sm->wpa_auth->conf.beacon_prot)
+	if (wpa_auth->conf.tx_bss_auth) {
+		wpa_auth = wpa_auth->conf.tx_bss_auth;
+		igtk_len = wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
+	}
+
+	if (!wpa_auth->conf.beacon_prot)
 		return kde_len;
 
 	/* MLO BIGTK KDE for each link */
@@ -3856,7 +3888,8 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
 
 	/* Add MLO GTK KDEs */
 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		if (!sm->mld_links[link_id].valid)
+		if (!sm->mld_links[link_id].valid ||
+		    !ml_key_info.links[i].gtk_len)
 			continue;
 
 		wpa_printf(MSG_DEBUG, "RSN: MLO GTK: link=%u", link_id);
@@ -3888,7 +3921,8 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
 
 	/* Add MLO IGTK KDEs */
 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		if (!sm->mld_links[link_id].valid)
+		if (!sm->mld_links[link_id].valid ||
+		    !ml_key_info.links[i].igtk_len)
 			continue;
 
 		wpa_printf(MSG_DEBUG, "RSN: MLO IGTK: link=%u", link_id);
@@ -3927,7 +3961,9 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
 
 	/* Add MLO BIGTK KDEs */
 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		if (!sm->mld_links[link_id].valid)
+		if (!sm->mld_links[link_id].valid ||
+		    !ml_key_info.links[i].bigtk ||
+		    !ml_key_info.links[i].igtk_len)
 			continue;
 
 		wpa_printf(MSG_DEBUG, "RSN: MLO BIGTK: link=%u", link_id);
@@ -4389,7 +4425,7 @@ static int wpa_auth_validate_ml_kdes_m4(struct wpa_state_machine *sm)
 
 	/* MLD MAC address must be the same */
 	if (!kde.mac_addr ||
-	    os_memcmp(kde.mac_addr, sm->peer_mld_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(kde.mac_addr, sm->peer_mld_addr)) {
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Mismatching or missing MLD address in EAPOL-Key msg 4/4");
 		return -1;
@@ -4723,7 +4759,8 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 				return;
 
 			kde = pos = kde_buf;
-			wpa_auth_ml_group_kdes(sm, pos);
+			pos = wpa_auth_ml_group_kdes(sm, pos);
+			kde_len = pos - kde_buf;
 		}
 #endif /* CONFIG_IEEE80211BE */
 	} else {
@@ -4903,18 +4940,29 @@ static int wpa_gtk_update(struct wpa_authenticator *wpa_auth,
 				group->IGTK[group->GN_igtk - 4], len);
 	}
 
-	if (conf->ieee80211w != NO_MGMT_FRAME_PROTECTION &&
-	    conf->beacon_prot) {
-		len = wpa_cipher_key_len(conf->group_mgmt_cipher);
-		os_memcpy(group->GNonce, group->Counter, WPA_NONCE_LEN);
-		inc_byte_array(group->Counter, WPA_NONCE_LEN);
-		if (wpa_gmk_to_gtk(group->GMK, "BIGTK key expansion",
-				   wpa_auth->addr, group->GNonce,
-				   group->BIGTK[group->GN_bigtk - 6], len) < 0)
-			ret = -1;
-		wpa_hexdump_key(MSG_DEBUG, "BIGTK",
-				group->BIGTK[group->GN_bigtk - 6], len);
+	if (!wpa_auth->non_tx_beacon_prot &&
+	    conf->ieee80211w == NO_MGMT_FRAME_PROTECTION)
+		return ret;
+	if (!conf->beacon_prot)
+		return ret;
+
+	if (wpa_auth->conf.tx_bss_auth) {
+		group = wpa_auth->conf.tx_bss_auth->group;
+		if (group->bigtk_set)
+			return ret;
+		wpa_printf(MSG_DEBUG, "Set up BIGTK for TX BSS");
 	}
+
+	len = wpa_cipher_key_len(conf->group_mgmt_cipher);
+	os_memcpy(group->GNonce, group->Counter, WPA_NONCE_LEN);
+	inc_byte_array(group->Counter, WPA_NONCE_LEN);
+	if (wpa_gmk_to_gtk(group->GMK, "BIGTK key expansion",
+			   wpa_auth->addr, group->GNonce,
+			   group->BIGTK[group->GN_bigtk - 6], len) < 0)
+		return -1;
+	group->bigtk_set = true;
+	wpa_hexdump_key(MSG_DEBUG, "BIGTK",
+			group->BIGTK[group->GN_bigtk - 6], len);
 
 	return ret;
 }
@@ -5076,9 +5124,10 @@ int wpa_wnmsleep_igtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 
 int wpa_wnmsleep_bigtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 {
-	struct wpa_group *gsm = sm->group;
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+	struct wpa_group *gsm = wpa_auth->group;
 	u8 *start = pos;
-	size_t len = wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
+	size_t len = wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
 
 	/*
 	 * BIGTK subelement:
@@ -5088,7 +5137,7 @@ int wpa_wnmsleep_bigtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 	*pos++ = 2 + 6 + len;
 	WPA_PUT_LE16(pos, gsm->GN_bigtk);
 	pos += 2;
-	if (wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_bigtk, pos) != 0)
+	if (wpa_auth_get_seqnum(wpa_auth, NULL, gsm->GN_bigtk, pos) != 0)
 		return 0;
 	pos += 6;
 
@@ -5178,12 +5227,21 @@ static int wpa_group_config_group_keys(struct wpa_authenticator *wpa_auth,
 				     KEY_FLAG_GROUP_TX_DEFAULT) < 0)
 			ret = -1;
 
-		if (ret == 0 && conf->beacon_prot &&
-		    wpa_auth_set_key(wpa_auth, group->vlan_id, alg,
+		if (ret || !conf->beacon_prot)
+			return ret;
+		if (wpa_auth->conf.tx_bss_auth) {
+			wpa_auth = wpa_auth->conf.tx_bss_auth;
+			group = wpa_auth->group;
+			if (!group->bigtk_set || group->bigtk_configured)
+				return ret;
+		}
+		if (wpa_auth_set_key(wpa_auth, group->vlan_id, alg,
 				     broadcast_ether_addr, group->GN_bigtk,
 				     group->BIGTK[group->GN_bigtk - 6], len,
 				     KEY_FLAG_GROUP_TX_DEFAULT) < 0)
 			ret = -1;
+		else
+			group->bigtk_configured = true;
 	}
 
 	return ret;
@@ -5328,9 +5386,11 @@ void wpa_gtk_rekey(struct wpa_authenticator *wpa_auth)
 		tmp = group->GM_igtk;
 		group->GM_igtk = group->GN_igtk;
 		group->GN_igtk = tmp;
-		tmp = group->GM_bigtk;
-		group->GM_bigtk = group->GN_bigtk;
-		group->GN_bigtk = tmp;
+		if (!wpa_auth->conf.tx_bss_auth) {
+			tmp = group->GM_bigtk;
+			group->GM_bigtk = group->GN_bigtk;
+			group->GN_bigtk = tmp;
+		}
 		wpa_gtk_update(wpa_auth, group);
 		wpa_group_config_group_keys(wpa_auth, group);
 	}
@@ -5680,28 +5740,11 @@ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid)
 
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			int session_timeout, int akmp)
-{
-	if (!wpa_auth || wpa_auth->conf.disable_pmksa_caching)
-		return -1;
-
-	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (2)", pmk, PMK_LEN);
-	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
-				 NULL, 0, wpa_auth->addr, addr, session_timeout,
-				 NULL, akmp))
-		return 0;
-
-	return -1;
-}
-
-
-int wpa_auth_pmksa_add3(struct wpa_authenticator *wpa_auth, const u8 *addr,
-			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
 			int session_timeout, int akmp, const u8 *dpp_pkhash)
 {
 	struct rsn_pmksa_cache_entry *entry;
 
-	if (wpa_auth->conf.disable_pmksa_caching)
+	if (!wpa_auth || wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (3)", pmk, PMK_LEN);
@@ -5825,13 +5868,14 @@ wpa_auth_pmksa_get(struct wpa_authenticator *wpa_auth, const u8 *sta_addr,
 void wpa_auth_pmksa_set_to_sm(struct rsn_pmksa_cache_entry *pmksa,
 			      struct wpa_state_machine *sm,
 			      struct wpa_authenticator *wpa_auth,
-			      u8 *pmkid, u8 *pmk)
+			      u8 *pmkid, u8 *pmk, size_t *pmk_len)
 {
 	if (!sm)
 		return;
 
 	sm->pmksa = pmksa;
-	os_memcpy(pmk, pmksa->pmk, PMK_LEN);
+	os_memcpy(pmk, pmksa->pmk, pmksa->pmk_len);
+	*pmk_len = pmksa->pmk_len;
 	os_memcpy(pmkid, pmksa->pmkid, PMKID_LEN);
 	os_memcpy(wpa_auth->dot11RSNAPMKIDUsed, pmksa->pmkid, PMKID_LEN);
 }
