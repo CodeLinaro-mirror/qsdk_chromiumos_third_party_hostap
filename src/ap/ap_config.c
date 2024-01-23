@@ -281,6 +281,10 @@ struct hostapd_config * hostapd_config_defaults(void)
 	conf->he_6ghz_max_ampdu_len_exp = 7;
 	conf->he_6ghz_rx_ant_pat = 1;
 	conf->he_6ghz_tx_ant_pat = 1;
+	conf->he_6ghz_reg_pwr_type = HE_REG_INFO_6GHZ_AP_TYPE_VLP;
+	conf->reg_def_cli_eirp_psd = -1;
+	conf->reg_sub_cli_eirp_psd = -1;
+	conf->reg_def_cli_eirp = -1;
 #endif /* CONFIG_IEEE80211AX */
 
 	/* The third octet of the country string uses an ASCII space character
@@ -294,6 +298,8 @@ struct hostapd_config * hostapd_config_defaults(void)
 #ifdef CONFIG_AIRTIME_POLICY
 	conf->airtime_update_interval = AIRTIME_DEFAULT_UPDATE_INTERVAL;
 #endif /* CONFIG_AIRTIME_POLICY */
+
+	hostapd_set_and_check_bw320_offset(conf, 0);
 
 	return conf;
 }
@@ -1129,10 +1135,9 @@ const u8 * hostapd_get_psk(const struct hostapd_bss_config *conf,
 	for (psk = conf->ssid.wpa_psk; psk != NULL; psk = psk->next) {
 		if (next_ok &&
 		    (psk->group ||
-		     (addr && os_memcmp(psk->addr, addr, ETH_ALEN) == 0) ||
+		     (addr && ether_addr_equal(psk->addr, addr)) ||
 		     (!addr && p2p_dev_addr &&
-		      os_memcmp(psk->p2p_dev_addr, p2p_dev_addr, ETH_ALEN) ==
-		      0))) {
+		      ether_addr_equal(psk->p2p_dev_addr, p2p_dev_addr)))) {
 			if (vlan_id)
 				*vlan_id = psk->vlan_id;
 			return psk->psk;
@@ -1556,6 +1561,10 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
 			   "Cannot set ieee80211be without ieee80211ax");
 		return -1;
 	}
+
+	if (full_config)
+		hostapd_set_and_check_bw320_offset(conf,
+						   conf->eht_bw320_offset);
 #endif /* CONFIG_IEEE80211BE */
 
 	if (full_config && conf->mbssid && !conf->ieee80211ax) {
@@ -1748,7 +1757,7 @@ void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
 	int i = 0;
 
 	while (i < *num) {
-		if (os_memcmp((*acl)[i].addr, addr, ETH_ALEN) == 0) {
+		if (ether_addr_equal((*acl)[i].addr, addr)) {
 			os_remove_in_array(*acl, *num, sizeof(**acl), i);
 			(*num)--;
 		} else {

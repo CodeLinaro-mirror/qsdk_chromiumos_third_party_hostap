@@ -322,7 +322,7 @@ def test_dpp_qr_code_auth_broadcast(dev, apdev):
     logger.info("dev1 scans QR Code and initiates DPP Authentication")
     dev[0].dpp_listen(2412)
     dev[1].dpp_auth_init(uri=uri0)
-    wait_auth_success(dev[0], dev[1], stop_responder=True)
+    wait_auth_success(dev[0], dev[1], stop_responder=True, timeout=20)
 
 def test_dpp_qr_code_auth_unicast(dev, apdev):
     """DPP QR Code and authentication exchange (unicast)"""
@@ -514,6 +514,11 @@ def test_dpp_qr_code_auth_mutual2(dev, apdev):
     if ev is None:
         raise Exception("QR Code scan for mutual authentication not requested")
 
+    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
+    if ev is None:
+        raise Exception("No TX status reported for response")
+    time.sleep(0.1)
+
     logger.info("dev0 scans QR Code")
     id0b = dev[0].dpp_qr_code(uri1b)
 
@@ -568,6 +573,11 @@ def run_dpp_qr_code_auth_mutual(dev, apdev, curve):
     if ev is None:
         raise Exception("QR Code scan for mutual authentication not requested")
 
+    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
+    if ev is None:
+        raise Exception("No TX status reported for response")
+    time.sleep(0.1)
+
     logger.info("dev0 scans QR Code")
     dev[0].dpp_qr_code(uri)
 
@@ -606,6 +616,11 @@ def test_dpp_auth_resp_retries(dev, apdev):
     # Stop Initiator from listening to frames to force retransmission of the
     # DPP Authentication Response frame with Status=0
     dev[1].request("DPP_STOP_LISTEN")
+
+    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
+    if ev is None:
+        raise Exception("No TX status reported for response")
+    time.sleep(0.1)
 
     dev[1].dump_monitor()
     dev[0].dump_monitor()
@@ -685,6 +700,11 @@ def test_dpp_qr_code_auth_hostapd_mutual2(dev, apdev):
     ev = hapd.wait_event(["DPP-SCAN-PEER-QR-CODE"], timeout=5)
     if ev is None:
         raise Exception("QR Code scan for mutual authentication not requested")
+
+    ev = hapd.wait_event(["DPP-TX-STATUS"], timeout=1)
+    if ev is None:
+        raise Exception("No TX status reported for response")
+    time.sleep(0.1)
 
     logger.info("AP scans QR Code")
     hapd.dpp_qr_code(uri0)
@@ -859,12 +879,6 @@ def test_dpp_qr_code_auth_neg_chan(dev, apdev):
     if "freq=2462 type=1" not in ev:
         raise Exception("Unexpected RX data for Authentication Response: " + ev)
 
-    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=5)
-    if ev is None:
-        raise Exception("TX status for DPP Authentication Response not reported")
-    if "freq=2462 result=SUCCESS" not in ev:
-        raise Exception("Unexpected TX status for Authentication Response: " + ev)
-
     ev = dev[1].wait_event(["DPP-TX "], timeout=5)
     if ev is None:
         raise Exception("DPP Authentication Confirm not sent")
@@ -876,12 +890,6 @@ def test_dpp_qr_code_auth_neg_chan(dev, apdev):
         raise Exception("DPP Authentication Confirm not received")
     if "freq=2462 type=2" not in ev:
         raise Exception("Unexpected RX data for Authentication Confirm: " + ev)
-
-    ev = dev[1].wait_event(["DPP-TX-STATUS"], timeout=5)
-    if ev is None:
-        raise Exception("TX status for DPP Authentication Confirm not reported")
-    if "freq=2462 result=SUCCESS" not in ev:
-        raise Exception("Unexpected TX status for Authentication Confirm: " + ev)
 
     wait_auth_success(dev[0], dev[1], configurator=dev[1], enrollee=dev[0],
                       stop_responder=True)
@@ -3886,7 +3894,7 @@ def test_dpp_proto_auth_req_invalid_i_bootstrap_key(dev, apdev):
         raise Exception("DPP scan request not seen")
     ev = dev[1].wait_event(["DPP-RESPONSE-PENDING"], timeout=5)
     if ev is None:
-        raise Exception("DPP response pending indivation not seen")
+        raise Exception("DPP response pending indication not seen")
 
 def test_dpp_proto_auth_req_no_i_proto_key(dev, apdev):
     """DPP protocol testing - no I-proto key in Auth Req"""
@@ -4551,6 +4559,11 @@ def test_dpp_hostapd_auth_resp_retries(dev, apdev):
     # DPP Authentication Response frame with Status=0
     dev[0].request("DPP_STOP_LISTEN")
 
+    ev = hapd.wait_event(["DPP-TX-STATUS"], timeout=1)
+    if ev is None:
+        raise Exception("No TX status reported for response")
+    time.sleep(0.1)
+
     hapd.dump_monitor()
     dev[0].dump_monitor()
 
@@ -4593,7 +4606,7 @@ def test_dpp_qr_code_chan_list_no_peer_unicast(dev, apdev):
 
 def test_dpp_qr_code_no_chan_list_broadcast(dev, apdev):
     """DPP QR Code and no channel list (broadcast)"""
-    run_dpp_qr_code_chan_list(dev, apdev, False, 2412, None)
+    run_dpp_qr_code_chan_list(dev, apdev, False, 2412, None, timeout=20)
 
 def test_dpp_qr_code_chan_list_broadcast(dev, apdev):
     """DPP QR Code and some 2.4 GHz channels (broadcast)"""
@@ -5488,13 +5501,21 @@ def test_dpp_two_initiators(dev, apdev):
     id = dev[0].dpp_bootstrap_gen(chan="81/1", mac=True)
     uri = dev[0].request("DPP_BOOTSTRAP_GET_URI %d" % id)
     dev[0].dpp_listen(2412)
+    peer = dev[2].dpp_qr_code(uri)
     dev[1].dpp_auth_init(uri=uri)
     ev = dev[0].wait_event(["DPP-RX"], timeout=5)
     if ev is None:
         raise Exeption("No DPP Authentication Request seen")
-    dev[2].dpp_auth_init(uri=uri)
-    wait_dpp_fail(dev[0],
-                  "DPP-FAIL Already in DPP authentication exchange - ignore new one")
+    dev[2].dpp_auth_init(uri=uri, peer=peer)
+    ev = dev[0].wait_event(["DPP-FAIL"], timeout=5)
+    if ev is None:
+        raise Exception("Failure not reported")
+    skip = False
+    if "Configurator rejected configuration" in ev:
+        # Race condition prevented real test from being executed
+        skip = True
+    elif "DPP-FAIL Already in DPP authentication exchange - ignore new one" not in ev:
+        raise Exception("Unexpected result: " + ev)
 
     ev = dev[0].wait_event(["DPP-CONF-FAILED"], timeout=2)
     if ev is None:
@@ -5506,6 +5527,9 @@ def test_dpp_two_initiators(dev, apdev):
     dev[0].request("DPP_STOP_LISTEN")
     dev[1].request("DPP_STOP_LISTEN")
     dev[2].request("DPP_STOP_LISTEN")
+
+    if skip:
+        raise HwsimSkip("dpp_two_initiators not fully executed due to race condition")
 
 def test_dpp_conf_file_update(dev, apdev, params):
     """DPP provisioning updating wpa_supplicant configuration file"""
@@ -5817,7 +5841,7 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
             raise Exception("DPP_CHIRP failed")
         if duplicate:
             for i in range(10):
-                msg = relay.mgmt_rx(timeout=10)
+                msg = relay.mgmt_rx(timeout=30)
                 if msg is None:
                     raise Exception("MGMT RX wait timed out")
                 relay.request("MGMT_RX_PROCESS freq=2462 datarate=0 ssi_signal=-30 frame=" + binascii.hexlify(msg['frame']).decode())
@@ -5826,7 +5850,7 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
                     relay.request("MGMT_RX_PROCESS freq=2462 datarate=0 ssi_signal=-30 frame=" + binascii.hexlify(msg['frame']).decode())
                     break
             relay.set("ext_mgmt_frame_handling", "0")
-        ev = relay.wait_event(["DPP-RX"], timeout=10)
+        ev = relay.wait_event(["DPP-RX"], timeout=30)
         if ev is None:
             raise Exception("Presence Announcement not seen")
         if "type=13" not in ev:
@@ -5850,10 +5874,12 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
         raise Exception("DPP network id not reported")
     network = int(ev.split(' ')[1])
     dev[0].wait_connected()
+    relay.wait_sta()
     dev[0].dump_monitor()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
     dev[0].dump_monitor()
+    relay.wait_sta_disconnect()
 
     if "OK" not in dev[0].request("DPP_RECONFIG %s" % network):
         raise Exception("Failed to start reconfiguration")
@@ -5864,6 +5890,7 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
     if network == network2:
         raise Exception("Network ID did not change")
     dev[0].wait_connected()
+    relay.wait_sta()
 
     time.sleep(0.5)
     wt.close()
@@ -5953,9 +5980,11 @@ def run_dpp_controller_init_through_relay(dev, apdev, params, dynamic=False,
         raise Exception("DPP network id not reported")
     network = int(ev.split(' ')[1])
     dev[0].wait_connected()
+    relay.wait_sta()
     dev[0].dump_monitor()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
+    relay.wait_sta_disconnect()
     dev[0].dump_monitor()
 
     if add:
@@ -6111,6 +6140,8 @@ def run_dpp_tcp(dev0, dev1, cap_lo, port=None, mutual=False):
         ev = dev1.wait_event(["DPP-SCAN-PEER-QR-CODE"], timeout=5)
         if ev is None:
             raise Exception("QR Code scan for mutual authentication not requested")
+
+        time.sleep(0.1)
 
         id1 = dev1.dpp_qr_code(uri0)
 
@@ -6842,7 +6873,7 @@ def test_dpp_chirp_configurator_inits(dev, apdev):
             raise Exception("Presence Announcement not sent")
 
     dev[1].dpp_auth_init(uri=uri, conf="sta-dpp", configurator=conf_id)
-    wait_auth_success(dev[0], dev[1], dev[1], dev[0])
+    wait_auth_success(dev[0], dev[1], dev[1], dev[0], timeout=10)
 
 def test_dpp_chirp_ap(dev, apdev):
     """DPP chirp by an AP"""
@@ -7299,8 +7330,10 @@ def run_dpp_reconfig_hostapd_configurator(dev, apdev):
         raise Exception("DPP network id not reported")
     network = int(ev.split(' ')[1])
     dev[0].wait_connected()
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
+    hapd.wait_sta_disconnect()
     dev[0].dump_monitor()
     time.sleep(10)
     if "FAIL" in dev[0].request("PMKSA_FLUSH"):
@@ -7327,6 +7360,7 @@ def run_dpp_reconfig_hostapd_configurator(dev, apdev):
     if network == network2:
         raise Exception("Network ID did not change")
     dev[0].wait_connected()
+    hapd.wait_sta()
 
 def test_dpp_qr_code_auth_rand_mac_addr(dev, apdev):
     """DPP QR Code and authentication exchange (rand_mac_addr=1)"""

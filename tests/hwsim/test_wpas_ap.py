@@ -21,6 +21,16 @@ def wait_ap_ready(dev):
     if ev is None:
         raise Exception("AP failed to start")
 
+def set_regdom(dev, country):
+    dev.set("country", country)
+    for i in range(5):
+        ev = dev.wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=5)
+        if not ev:
+            return
+        if "alpha2=" + country in ev:
+            return
+    logger.info("No regdom change event indicated")
+
 def log_channel_info(dev):
     gen = dev.get_status_field('wifi_generation')
     if gen:
@@ -200,6 +210,7 @@ def test_wpas_ap_wps(dev):
         raise Exception("PBC mode start timeout")
     dev[1].request("WPS_PBC")
     dev[1].wait_connected(timeout=30, error="WPS PBC operation timed out")
+    dev[0].wait_sta(addr=dev[1].own_addr())
     hwsim_utils.test_connectivity(dev[0], dev[1])
 
     logger.info("Test AP PIN to learn configuration")
@@ -209,10 +220,13 @@ def test_wpas_ap_wps(dev):
     if pin not in dev[0].request("WPS_AP_PIN get"):
         raise Exception("Could not fetch current AP PIN")
     dev[2].wps_reg(bssid, pin)
+    dev[0].wait_sta(addr=dev[2].own_addr())
     hwsim_utils.test_connectivity(dev[1], dev[2])
 
     dev[1].request("REMOVE_NETWORK all")
     dev[2].request("REMOVE_NETWORK all")
+    dev[0].wait_sta_disconnect()
+    dev[0].wait_sta_disconnect()
 
     logger.info("Test AP PIN operations")
     dev[0].request("WPS_AP_PIN disable")
@@ -225,13 +239,19 @@ def test_wpas_ap_wps(dev):
     dev[0].request("WPS_PIN any " + pin)
     dev[1].request("WPS_PIN any " + pin)
     dev[1].wait_connected(timeout=30)
+    dev[0].wait_sta(addr=dev[1].own_addr())
     dev[1].request("REMOVE_NETWORK all")
+    dev[1].wait_disconnected()
+    dev[0].wait_sta_disconnect(addr=dev[1].own_addr())
     dev[1].dump_monitor()
 
     dev[0].request("WPS_PIN any " + pin + " 100")
     dev[1].request("WPS_PIN any " + pin)
     dev[1].wait_connected(timeout=30)
+    dev[0].wait_sta(addr=dev[1].own_addr())
     dev[1].request("REMOVE_NETWORK all")
+    dev[1].wait_disconnected()
+    dev[0].wait_sta_disconnect(addr=dev[1].own_addr())
     dev[1].dump_monitor()
 
     dev[0].request("WPS_AP_PIN set 12345670")
@@ -391,7 +411,7 @@ def _test_wpas_ap_dfs(dev):
     if ev is None:
         raise Exception("AP failed to start")
 
-    dev[1].connect("wpas-ap-dfs", key_mgmt="NONE")
+    dev[1].connect("wpas-ap-dfs", key_mgmt="NONE", timeout=30)
     dev[1].wait_regdom(country_ie=True)
     dev[0].request("DISCONNECT")
     dev[1].disconnect_and_stop_scan()
@@ -684,7 +704,7 @@ def _test_wpas_ap_5ghz(dev):
 def test_wpas_ap_open_ht40(dev):
     """wpa_supplicant AP mode - HT 40 MHz"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -713,7 +733,7 @@ def test_wpas_ap_open_ht40(dev):
 def test_wpas_ap_open_vht80(dev):
     """wpa_supplicant AP mode - VHT 80 MHz"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -760,7 +780,7 @@ def test_wpas_ap_open_vht80_us_161(dev):
 
 def run_wpas_ap_open_vht80_us(dev, freq, center_freq, ht40):
     id = dev[0].add_network()
-    dev[0].set("country", "US")
+    set_regdom(dev[0], "US")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -785,6 +805,8 @@ def run_wpas_ap_open_vht80_us(dev, freq, center_freq, ht40):
         if "WIDTH=80 MHz" not in sig:
             raise Exception("Unexpected SIGNAL_POLL value(2): " + str(sig))
     finally:
+        dev[0].request("REMOVE_NETWORK all")
+        dev[0].wait_disconnected()
         set_country("00")
         dev[0].set("country", "00")
         dev[1].flush_scan_cache()
@@ -833,7 +855,7 @@ def test_wpas_ap_no_ht(dev):
 def test_wpas_ap_async_fail(dev):
     """wpa_supplicant AP mode - Async failure"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -1070,11 +1092,14 @@ def run_wpas_ap_lifetime_in_memory(dev, apdev, params, raw):
     get_key_locations(buf, pmk, "PMK")
 
     dev[1].connect(ssid, psk=passphrase, scan_freq="2412")
+    dev[0].wait_sta()
 
     buf = read_process_memory(pid, pmk)
 
     dev[1].request("DISCONNECT")
     dev[1].wait_disconnected()
+    dev[0].wait_sta_disconnect()
+    time.sleep(1)
 
     buf2 = read_process_memory(pid, pmk)
 

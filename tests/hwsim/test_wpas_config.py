@@ -253,7 +253,9 @@ def test_wpas_config_file(dev, apdev, params):
         wpas.interface_add("wlan5", config=config)
         if len(wpas.list_networks()) != 2:
             raise Exception("Unexpected number of networks")
-        if len(wpas.request("LIST_CREDS").splitlines()) != 2:
+        res = wpas.request("LIST_CREDS")
+        logger.info("Credentials:\n" + res)
+        if len(res.splitlines()) != 2:
             raise Exception("Unexpected number of credentials")
 
         val = wpas.get_cred(0, "roaming_consortiums")
@@ -296,6 +298,16 @@ def test_wpas_config_file(dev, apdev, params):
         wpas.dump_monitor()
         wpas.request("SET country 00")
         wpas.wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=1)
+
+    country = False
+    for i in range(5):
+        ev = dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=1)
+        if ev is None:
+            break
+        if "alpha2=FI" in ev:
+            country = True
+        if country and "type=WORLD" in ev:
+            break
 
 def test_wpas_config_file_wps(dev, apdev):
     """wpa_supplicant config file parsing/writing with WPS"""
@@ -539,6 +551,7 @@ def test_wpas_config_file_set_global(dev):
 
 def test_wpas_config_file_key_mgmt(dev, apdev, params):
     """wpa_supplicant config file writing and key_mgmt values"""
+    check_fils_capa(dev[0])
     config = os.path.join(params['logdir'],
                           'wpas_config_file_key_mgmt.conf')
     if os.path.exists(config):

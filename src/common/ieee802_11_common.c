@@ -1004,7 +1004,7 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
 			continue;
 		}
 
-		if (sub_elem_len < 3) {
+		if (sub_elem_len < 5) {
 			if (show_errors)
 				wpa_printf(MSG_DEBUG,
 					   "MLD: error: sub_elem_len=%zu < 5",
@@ -1073,7 +1073,8 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
 			non_inherit_len -= 1 + non_inherit[0];
 			non_inherit += 1 + non_inherit[0];
 
-			if (non_inherit_len < 1UL + non_inherit[0]) {
+			if (non_inherit_len < 1UL ||
+			    non_inherit_len < 1UL + non_inherit[0]) {
 				if (show_errors)
 					wpa_printf(MSG_DEBUG,
 						   "MLD: Invalid inheritance");
@@ -2496,35 +2497,6 @@ const u8 * get_ie(const u8 *ies, size_t len, u8 eid)
 
 
 /**
- * get_ie_nth - Fetch a specified information element from IEs buffer
- * @ies: Information elements buffer
- * @len: Information elements buffer length
- * @eid: Information element identifier (WLAN_EID_*)
- * @nth: Return the nth element of the requested type (2 returns the second)
- * Returns: Pointer to the information element (id field) or %NULL if not found
- *
- * This function returns the nth matching information element in the IEs
- * buffer or %NULL in case the element is not found.
- */
-const u8 * get_ie_nth(const u8 *ies, size_t len, u8 eid, int nth)
-{
-	const struct element *elem;
-	int sofar = 0;
-
-	if (!ies)
-		return NULL;
-
-	for_each_element_id(elem, eid, ies, len) {
-		sofar++;
-		if (sofar == nth)
-			return &elem->id;
-	}
-
-	return NULL;
-}
-
-
-/**
  * get_ie_ext - Fetch a specified extended information element from IEs buffer
  * @ies: Information elements buffer
  * @len: Information elements buffer length
@@ -2860,6 +2832,21 @@ int get_6ghz_sec_channel(int channel)
 	if (((channel - 1) / 4) % 2)
 		return -1;
 	return 1;
+}
+
+
+bool is_same_band(int freq1, int freq2)
+{
+	if (IS_2P4GHZ(freq1) && IS_2P4GHZ(freq2))
+		return true;
+
+	if (IS_5GHZ(freq1) && IS_5GHZ(freq2))
+		return true;
+
+	if (is_6ghz_freq(freq1) && is_6ghz_freq(freq2))
+		return true;
+
+	return false;
 }
 
 
@@ -3201,8 +3188,39 @@ enum oper_chan_width op_class_to_ch_width(u8 op_class)
 }
 
 
-struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
-				       bool ext_elem)
+/**
+ * chwidth_freq2_to_ch_width - Determine channel width as enum oper_chan_width
+ * @chwidth: Channel width integer
+ * @freq2: Value for frequency 2. 0 is not used
+ * Returns: enum oper_chan_width, -1 on failure
+ */
+int chwidth_freq2_to_ch_width(int chwidth, int freq2)
+{
+	if (freq2 < 0)
+		return -1;
+	if (freq2)
+		return CONF_OPER_CHWIDTH_80P80MHZ;
+
+	switch (chwidth) {
+	case 0:
+	case 20:
+	case 40:
+		return CONF_OPER_CHWIDTH_USE_HT;
+	case 80:
+		return CONF_OPER_CHWIDTH_80MHZ;
+	case 160:
+		return CONF_OPER_CHWIDTH_160MHZ;
+	case 320:
+		return CONF_OPER_CHWIDTH_320MHZ;
+	default:
+		wpa_printf(MSG_DEBUG, "Unknown max oper bandwidth: %d",
+			   chwidth);
+		return -1;
+	}
+}
+
+
+struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
 {
 	struct wpabuf *buf;
 	const u8 *pos, *end = data + len;
@@ -3242,44 +3260,6 @@ struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
 }
 
 
-struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
-				  u8 eid, u8 eid_ext)
-{
-	const u8 *data;
-	size_t len;
-
-	/*
-	 * TODO: Defragmentation mechanism can be supported for all IEs. For now
-	 * handle only those that are used (or use ieee802_11_defrag_data()).
-	 */
-	switch (eid) {
-	case WLAN_EID_EXTENSION:
-		switch (eid_ext) {
-		case WLAN_EID_EXT_FILS_HLP_CONTAINER:
-			data = elems->fils_hlp;
-			len = elems->fils_hlp_len;
-			break;
-		case WLAN_EID_EXT_WRAPPED_DATA:
-			data = elems->wrapped_data;
-			len = elems->wrapped_data_len;
-			break;
-		default:
-			wpa_printf(MSG_DEBUG,
-				   "Defragmentation not supported. eid_ext=%u",
-				   eid_ext);
-			return NULL;
-		}
-		break;
-	default:
-		wpa_printf(MSG_DEBUG,
-			   "Defragmentation not supported. eid=%u", eid);
-		return NULL;
-	}
-
-	return ieee802_11_defrag_data(data, len, true);
-}
-
-
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type)
 {
 	const struct element *elem;
@@ -3313,41 +3293,4 @@ const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len)
 		return NULL;
 
 	return &buf[mld_addr_pos];
-}
-
-
-struct wpabuf * ieee802_11_defrag_mle(struct ieee802_11_elems *elems, u8 type)
-{
-	const u8 *data;
-	size_t len;
-
-	switch (type) {
-	case MULTI_LINK_CONTROL_TYPE_BASIC:
-		data = elems->basic_mle;
-		len = elems->basic_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_PROBE_REQ:
-		data = elems->probe_req_mle;
-		len = elems->probe_req_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_RECONF:
-		data = elems->reconf_mle;
-		len = elems->reconf_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_TDLS:
-		data = elems->tdls_mle;
-		len = elems->tdls_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_PRIOR_ACCESS:
-		data = elems->prior_access_mle;
-		len = elems->prior_access_mle_len;
-		break;
-	default:
-		wpa_printf(MSG_DEBUG,
-			   "Defragmentation not supported for Multi-Link element type=%u",
-			   type);
-		return NULL;
-	}
-
-	return ieee802_11_defrag_data(data, len, true);
 }

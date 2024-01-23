@@ -1785,7 +1785,7 @@ static void wpas_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 	wpa_s->dpp_gas_dialog_token = -1;
 
 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
-	    os_memcmp(addr, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(addr, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
 		return;
 	}
@@ -1918,7 +1918,11 @@ static void wpas_dpp_start_gas_client(struct wpa_supplicant *wpa_s)
 	offchannel_send_action_done(wpa_s);
 	wpas_dpp_listen_stop(wpa_s);
 
+#ifdef CONFIG_NO_RRM
+	supp_op_classes = NULL;
+#else /* CONFIG_NO_RRM */
 	supp_op_classes = wpas_supp_op_classes(wpa_s);
+#endif /* CONFIG_NO_RRM */
 	buf = dpp_build_conf_req_helper(auth, wpa_s->conf->dpp_name,
 					wpa_s->dpp_netrole,
 					wpa_s->conf->dpp_mud_url,
@@ -1998,7 +2002,7 @@ static void wpas_dpp_rx_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
 	}
 
 	if (!is_zero_ether_addr(auth->peer_mac_addr) &&
-	    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2052,7 +2056,7 @@ static void wpas_dpp_rx_auth_conf(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2153,7 +2157,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
 
 	if (!auth || !auth->waiting_conf_result) {
 		if (auth &&
-		    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) == 0 &&
+		    ether_addr_equal(src, auth->peer_mac_addr) &&
 		    gas_server_response_sent(wpa_s->gas_server,
 					     auth->gas_server_ctx)) {
 			/* This could happen if the TX status event gets delayed
@@ -2170,7 +2174,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
 		}
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2583,7 +2587,7 @@ wpas_dpp_rx_reconfig_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2627,7 +2631,7 @@ wpas_dpp_rx_reconfig_auth_conf(struct wpa_supplicant *wpa_s, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2665,7 +2669,7 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
 	wpa_printf(MSG_DEBUG, "DPP: Peer Discovery Response from " MACSTR,
 		   MAC2STR(src));
 	if (is_zero_ether_addr(wpa_s->dpp_intro_bssid) ||
-	    os_memcmp(src, wpa_s->dpp_intro_bssid, ETH_ALEN) != 0) {
+	    !ether_addr_equal(src, wpa_s->dpp_intro_bssid)) {
 		wpa_printf(MSG_DEBUG, "DPP: Not waiting for response from "
 			   MACSTR " - drop", MAC2STR(src));
 		return;
@@ -3829,7 +3833,7 @@ wpas_dpp_rx_priv_peer_intro_notify(struct wpa_supplicant *wpa_s,
 	wpa_printf(MSG_DEBUG, "DPP: Private Peer Introduction Notify from "
 		   MACSTR, MAC2STR(src));
 	if (is_zero_ether_addr(wpa_s->dpp_intro_bssid) ||
-	    os_memcmp(src, wpa_s->dpp_intro_bssid, ETH_ALEN) != 0) {
+	    !ether_addr_equal(src, wpa_s->dpp_intro_bssid)) {
 		wpa_printf(MSG_DEBUG, "DPP: Not waiting for response from "
 			   MACSTR " - drop", MAC2STR(src));
 		return;
@@ -4120,7 +4124,7 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR,
 		   MAC2STR(sa));
 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
-	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(sa, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
 		return NULL;
 	}
@@ -4134,6 +4138,13 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
 		 * exchange. */
 		dpp_notify_auth_success(auth, 1);
 		wpa_s->dpp_auth_ok_on_ack = 0;
+#ifdef CONFIG_TESTING_OPTIONS
+		if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
+			wpa_printf(MSG_INFO,
+				   "DPP: TESTING - stop at Authentication Confirm");
+			return NULL;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 	}
 
 	wpa_hexdump(MSG_DEBUG,

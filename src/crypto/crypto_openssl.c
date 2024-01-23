@@ -471,11 +471,11 @@ void * aes_encrypt_init(const u8 *key, size_t len)
 	ctx = EVP_CIPHER_CTX_new();
 	if (ctx == NULL)
 		return NULL;
-	if (EVP_EncryptInit_ex(ctx, type, NULL, key, NULL) != 1) {
+	if (EVP_EncryptInit_ex(ctx, type, NULL, key, NULL) != 1 ||
+	    EVP_CIPHER_CTX_set_padding(ctx, 0) != 1) {
 		EVP_CIPHER_CTX_free(ctx);
 		return NULL;
 	}
-	EVP_CIPHER_CTX_set_padding(ctx, 0);
 	return ctx;
 }
 
@@ -528,11 +528,11 @@ void * aes_decrypt_init(const u8 *key, size_t len)
 	ctx = EVP_CIPHER_CTX_new();
 	if (ctx == NULL)
 		return NULL;
-	if (EVP_DecryptInit_ex(ctx, type, NULL, key, NULL) != 1) {
+	if (EVP_DecryptInit_ex(ctx, type, NULL, key, NULL) != 1 ||
+	    EVP_CIPHER_CTX_set_padding(ctx, 0) != 1) {
 		EVP_CIPHER_CTX_free(ctx);
 		return NULL;
 	}
-	EVP_CIPHER_CTX_set_padding(ctx, 0);
 	return ctx;
 }
 
@@ -1313,6 +1313,7 @@ struct crypto_hash {
 #else /* OpenSSL version >= 3.0 */
 	HMAC_CTX *ctx;
 #endif /* OpenSSL version >= 3.0 */
+	bool failed;
 };
 
 
@@ -1425,9 +1426,11 @@ void crypto_hash_update(struct crypto_hash *ctx, const u8 *data, size_t len)
 	if (ctx == NULL)
 		return;
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-	EVP_MAC_update(ctx->ctx, data, len);
+	if (!EVP_MAC_update(ctx->ctx, data, len))
+		ctx->failed = true;
 #else /* OpenSSL version >= 3.0 */
-	HMAC_Update(ctx->ctx, data, len);
+	if (!HMAC_Update(ctx->ctx, data, len))
+		ctx->failed = true;
 #endif /* OpenSSL version >= 3.0 */
 }
 
@@ -1437,6 +1440,7 @@ int crypto_hash_finish(struct crypto_hash *ctx, u8 *mac, size_t *len)
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 	size_t mdlen;
 	int res;
+	bool failed;
 
 	if (!ctx)
 		return -2;
@@ -1455,10 +1459,14 @@ int crypto_hash_finish(struct crypto_hash *ctx, u8 *mac, size_t *len)
 	}
 	res = EVP_MAC_final(ctx->ctx, mac, &mdlen, mdlen);
 	EVP_MAC_CTX_free(ctx->ctx);
+	failed = ctx->failed;
 	bin_clear_free(ctx, sizeof(*ctx));
 
 	if (TEST_FAIL())
 		return -1;
+
+	if (failed)
+		return -2;
 
 	if (res == 1) {
 		*len = mdlen;
@@ -1469,6 +1477,7 @@ int crypto_hash_finish(struct crypto_hash *ctx, u8 *mac, size_t *len)
 #else /* OpenSSL version >= 3.0 */
 	unsigned int mdlen;
 	int res;
+	bool failed;
 
 	if (ctx == NULL)
 		return -2;
@@ -1482,10 +1491,14 @@ int crypto_hash_finish(struct crypto_hash *ctx, u8 *mac, size_t *len)
 	mdlen = *len;
 	res = HMAC_Final(ctx->ctx, mac, &mdlen);
 	HMAC_CTX_free(ctx->ctx);
+	failed = ctx->failed;
 	bin_clear_free(ctx, sizeof(*ctx));
 
 	if (TEST_FAIL())
 		return -1;
+
+	if (failed)
+		return -2;
 
 	if (res == 1) {
 		*len = mdlen;

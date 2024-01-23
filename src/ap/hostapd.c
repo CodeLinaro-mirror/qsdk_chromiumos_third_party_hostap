@@ -413,6 +413,61 @@ static void hostapd_clear_drv_priv(struct hostapd_data *hapd)
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+#ifdef CONFIG_TESTING_OPTIONS
+
+#define TU_TO_USEC(_val) ((_val) * 1024)
+
+static void hostapd_link_remove_timeout_handler(void *eloop_data,
+						void *user_ctx)
+{
+	struct hostapd_data *hapd = (struct hostapd_data *) eloop_data;
+
+	if (hapd->eht_mld_link_removal_count == 0)
+		return;
+	hapd->eht_mld_link_removal_count--;
+
+	wpa_printf(MSG_DEBUG, "MLD: Remove link_id=%u in %u beacons",
+		   hapd->mld_link_id,
+		   hapd->eht_mld_link_removal_count);
+
+	ieee802_11_set_beacon(hapd);
+
+	if (!hapd->eht_mld_link_removal_count) {
+		hostapd_disable_iface(hapd->iface);
+		return;
+	}
+
+	eloop_register_timeout(0, TU_TO_USEC(hapd->iconf->beacon_int),
+			       hostapd_link_remove_timeout_handler,
+			       hapd, NULL);
+}
+
+
+int hostapd_link_remove(struct hostapd_data *hapd, u32 count)
+{
+	if (!hapd->conf->mld_ap)
+		return -1;
+
+	wpa_printf(MSG_DEBUG,
+		   "MLD: Remove link_id=%u in %u beacons",
+		   hapd->mld_link_id, count);
+
+	hapd->eht_mld_link_removal_count = count;
+	hapd->eht_mld_bss_param_change++;
+
+	eloop_register_timeout(0, TU_TO_USEC(hapd->iconf->beacon_int),
+			       hostapd_link_remove_timeout_handler,
+			       hapd, NULL);
+
+	ieee802_11_set_beacon(hapd);
+	return 0;
+}
+
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
+
+
 void hostapd_free_hapd_data(struct hostapd_data *hapd)
 {
 	os_free(hapd->probereq_cb);
@@ -502,7 +557,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	hapd->setup_complete_cb = NULL;
 #endif /* CONFIG_MESH */
 
+#ifndef CONFIG_NO_RRM
 	hostapd_clean_rrm(hapd);
+#endif /* CONFIG_NO_RRM */
 	fils_hlp_deinit(hapd);
 
 #ifdef CONFIG_OCV
@@ -525,6 +582,12 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 
 #ifdef CONFIG_IEEE80211AX
 	eloop_cancel_timeout(hostapd_switch_color_timeout_handler, hapd, NULL);
+#ifdef CONFIG_TESTING_OPTIONS
+#ifdef CONFIG_IEEE80211BE
+	eloop_cancel_timeout(hostapd_link_remove_timeout_handler, hapd, NULL);
+#endif /* CONFIG_IEEE80211BE */
+#endif /* CONFIG_TESTING_OPTIONS */
+
 #endif /* CONFIG_IEEE80211AX */
 }
 
@@ -3768,7 +3831,7 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 				      struct hostapd_freq_params *old_params)
 {
 	int channel;
-	u8 seg0, seg1;
+	u8 seg0 = 0, seg1 = 0;
 	struct hostapd_hw_modes *mode;
 
 	if (!params->channel) {
@@ -3844,10 +3907,14 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 	conf->ieee80211n = params->ht_enabled;
 	conf->ieee80211ac = params->vht_enabled;
 	conf->secondary_channel = params->sec_channel_offset;
-	ieee80211_freq_to_chan(params->center_freq1,
-			       &seg0);
-	ieee80211_freq_to_chan(params->center_freq2,
-			       &seg1);
+	if (params->center_freq1 &&
+	    ieee80211_freq_to_chan(params->center_freq1, &seg0) ==
+	    NUM_HOSTAPD_MODES)
+		return -1;
+	if (params->center_freq2 &&
+	    ieee80211_freq_to_chan(params->center_freq2,
+				   &seg1) == NUM_HOSTAPD_MODES)
+		return -1;
 	hostapd_set_oper_centr_freq_seg0_idx(conf, seg0);
 	hostapd_set_oper_centr_freq_seg1_idx(conf, seg1);
 
@@ -3945,6 +4012,11 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	settings->counter_offset_presp[0] = hapd->cs_c_off_proberesp;
 	settings->counter_offset_beacon[1] = hapd->cs_c_off_ecsa_beacon;
 	settings->counter_offset_presp[1] = hapd->cs_c_off_ecsa_proberesp;
+	settings->link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		settings->link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 
 	return 0;
 }
@@ -4040,13 +4112,17 @@ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
 		bw = CONF_OPER_CHWIDTH_USE_HT;
 		break;
 	case 80:
-		if (freq_params->center_freq2)
+		if (freq_params->center_freq2) {
 			bw = CONF_OPER_CHWIDTH_80P80MHZ;
-		else
+			iface->conf->vht_capab |=
+				VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ;
+		} else {
 			bw = CONF_OPER_CHWIDTH_80MHZ;
+		}
 		break;
 	case 160:
 		bw = CONF_OPER_CHWIDTH_160MHZ;
+		iface->conf->vht_capab |= VHT_CAP_SUPP_CHAN_WIDTH_160MHZ;
 		break;
 	case 320:
 		bw = CONF_OPER_CHWIDTH_320MHZ;
