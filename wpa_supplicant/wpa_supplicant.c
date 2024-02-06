@@ -1752,10 +1752,10 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	wpa_s->group_cipher = WPA_CIPHER_NONE;
 	wpa_s->pairwise_cipher = WPA_CIPHER_NONE;
 #else /* CONFIG_NO_WPA */
-	sel = ie.group_cipher & ssid->group_cipher;
+	sel = ie.group_cipher & ssid->group_cipher & wpa_s->drv_ciphers;
 	wpa_dbg(wpa_s, MSG_DEBUG,
-		"WPA: AP group 0x%x network profile group 0x%x; available group 0x%x",
-		ie.group_cipher, ssid->group_cipher, sel);
+		"WPA: AP group 0x%x network profile group 0x%x driver supported ciphers 0x%x; available group 0x%x",
+		ie.group_cipher, ssid->group_cipher, wpa_s->drv_ciphers, sel);
 	wpa_s->group_cipher = wpa_pick_group_cipher(sel);
 	if (wpa_s->group_cipher < 0) {
 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to select group "
@@ -1765,10 +1765,11 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using GTK %s",
 		wpa_cipher_txt(wpa_s->group_cipher));
 
-	sel = ie.pairwise_cipher & ssid->pairwise_cipher;
+	sel = ie.pairwise_cipher & ssid->pairwise_cipher & wpa_s->drv_ciphers;
 	wpa_dbg(wpa_s, MSG_DEBUG,
-		"WPA: AP pairwise 0x%x network profile pairwise 0x%x; available pairwise 0x%x",
-		ie.pairwise_cipher, ssid->pairwise_cipher, sel);
+		"WPA: AP pairwise 0x%x network profile pairwise 0x%x driver supported ciphers 0x%x; available pairwise 0x%x",
+		ie.pairwise_cipher, ssid->pairwise_cipher, wpa_s->drv_ciphers,
+		sel);
 	wpa_s->pairwise_cipher = wpa_pick_pairwise_cipher(sel, 1);
 	if (wpa_s->pairwise_cipher < 0) {
 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to select pairwise "
@@ -7050,6 +7051,33 @@ static void wpas_gas_server_tx(void *ctx, int freq, const u8 *da,
 
 #endif /* CONFIG_GAS_SERVER */
 
+static unsigned int wpas_drv_enc_to_ciphers(unsigned int drv_enc)
+{
+	unsigned int ciphers = 0;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_WEP40)
+		ciphers |= WPA_CIPHER_WEP40;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_WEP104)
+		ciphers |= WPA_CIPHER_WEP104;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_TKIP)
+		ciphers |= WPA_CIPHER_TKIP;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_CCMP)
+		ciphers |= WPA_CIPHER_CCMP;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_GCMP)
+		ciphers |= WPA_CIPHER_GCMP;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_GCMP_256)
+		ciphers |= WPA_CIPHER_GCMP_256;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_CCMP_256)
+		ciphers |= WPA_CIPHER_CCMP_256;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_BIP_GMAC_128)
+		ciphers |= WPA_CIPHER_BIP_GMAC_128;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_BIP_GMAC_256)
+		ciphers |= WPA_CIPHER_BIP_GMAC_256;
+	if (drv_enc & WPA_DRIVER_CAPA_ENC_BIP_CMAC_256)
+		ciphers |= WPA_CIPHER_BIP_CMAC_256;
+	return ciphers;
+}
+
+
 static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 				     const struct wpa_interface *iface)
 {
@@ -7234,6 +7262,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		wpa_s->drv_flags = capa.flags;
 		wpa_s->drv_flags2 = capa.flags2;
 		wpa_s->drv_enc = capa.enc;
+		wpa_s->drv_ciphers = wpas_drv_enc_to_ciphers(wpa_s->drv_enc);
 		wpa_s->drv_rrm_flags = capa.rrm_flags;
 		wpa_s->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
 		wpa_s->probe_resp_offloads = capa.probe_resp_offloads;
