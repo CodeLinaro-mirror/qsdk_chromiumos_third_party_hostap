@@ -1,6 +1,6 @@
 /*
  * hostapd / Configuration helper functions
- * Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -165,6 +165,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 
 #ifdef CONFIG_TESTING_OPTIONS
 	bss->sae_commit_status = -1;
+	bss->test_assoc_comeback_type = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_PASN
@@ -699,6 +700,33 @@ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **l)
 }
 
 
+#ifdef CONFIG_IEEE80211R_AP
+
+void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf)
+{
+	struct ft_remote_r0kh *r0kh, *r0kh_prev;
+	struct ft_remote_r1kh *r1kh, *r1kh_prev;
+
+	r0kh = conf->r0kh_list;
+	conf->r0kh_list = NULL;
+	while (r0kh) {
+		r0kh_prev = r0kh;
+		r0kh = r0kh->next;
+		os_free(r0kh_prev);
+	}
+
+	r1kh = conf->r1kh_list;
+	conf->r1kh_list = NULL;
+	while (r1kh) {
+		r1kh_prev = r1kh;
+		r1kh = r1kh->next;
+		os_free(r1kh_prev);
+	}
+}
+
+#endif /* CONFIG_IEEE80211R_AP */
+
+
 static void hostapd_config_free_anqp_elem(struct hostapd_bss_config *conf)
 {
 	struct anqp_element *elem;
@@ -831,26 +859,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	os_free(conf->time_zone);
 
 #ifdef CONFIG_IEEE80211R_AP
-	{
-		struct ft_remote_r0kh *r0kh, *r0kh_prev;
-		struct ft_remote_r1kh *r1kh, *r1kh_prev;
-
-		r0kh = conf->r0kh_list;
-		conf->r0kh_list = NULL;
-		while (r0kh) {
-			r0kh_prev = r0kh;
-			r0kh = r0kh->next;
-			os_free(r0kh_prev);
-		}
-
-		r1kh = conf->r1kh_list;
-		conf->r1kh_list = NULL;
-		while (r1kh) {
-			r1kh_prev = r1kh;
-			r1kh = r1kh->next;
-			os_free(r1kh_prev);
-		}
-	}
+	hostapd_config_clear_rxkhs(conf);
+	os_free(conf->rxkh_file);
+	conf->rxkh_file = NULL;
 #endif /* CONFIG_IEEE80211R_AP */
 
 #ifdef CONFIG_WPS
@@ -948,6 +959,8 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	wpabuf_free(conf->rsnxe_override_ft);
 	wpabuf_free(conf->gtk_rsc_override);
 	wpabuf_free(conf->igtk_rsc_override);
+	wpabuf_free(conf->eapol_m1_elements);
+	wpabuf_free(conf->eapol_m3_elements);
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	os_free(conf->no_probe_resp_if_seen_on);

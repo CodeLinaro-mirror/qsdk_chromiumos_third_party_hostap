@@ -1249,6 +1249,20 @@ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "ENABLE_MLD");
+}
+
+
+static int hostapd_cli_cmd_disable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DISABLE_MLD");
+}
+
+
 static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
@@ -1591,6 +1605,24 @@ static int hostapd_cli_cmd_reload_wpa_psk(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+#ifdef CONFIG_IEEE80211R_AP
+
+static int hostapd_cli_cmd_get_rxkhs(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "GET_RXKHS");
+}
+
+
+static int hostapd_cli_cmd_reload_rxkhs(struct wpa_ctrl *ctrl, int argc,
+					char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "RELOAD_RXKHS");
+}
+
+#endif /* CONFIG_IEEE80211R_AP */
+
+
 #ifdef ANDROID
 static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
@@ -1721,6 +1753,10 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "= reload configuration for current interface" },
 	{ "disable", hostapd_cli_cmd_disable, NULL,
 	  "= disable hostapd on current interface" },
+	{ "enable_mld", hostapd_cli_cmd_enable_mld, NULL,
+	  "= enable AP MLD to which the interface is affiliated" },
+	{ "disable_mld", hostapd_cli_cmd_disable_mld, NULL,
+	  "= disable AP MLD to which the interface is affiliated" },
 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
 	  "= update Beacon frame contents\n"},
 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,
@@ -1804,6 +1840,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "<addr> [req_mode=] <measurement request hexdump>  = send a Beacon report request to a station" },
 	{ "reload_wpa_psk", hostapd_cli_cmd_reload_wpa_psk, NULL,
 	  "= reload wpa_psk_file only" },
+#ifdef CONFIG_IEEE80211R_AP
+	{ "reload_rxkhs", hostapd_cli_cmd_reload_rxkhs, NULL,
+	  "= reload R0KHs and R1KHs" },
+	{ "get_rxkhs", hostapd_cli_cmd_get_rxkhs, NULL,
+	  "= get R0KHs and R1KHs" },
+#endif /* CONFIG_IEEE80211R_AP */
 #ifdef ANDROID
 	{ "driver", hostapd_cli_cmd_driver, NULL,
 	  "<driver sub command> [<hex formatted data>] = send driver command data" },

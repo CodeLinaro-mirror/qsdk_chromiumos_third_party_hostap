@@ -281,6 +281,12 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN_USD
+OBJS += src/common/nan_de.c
+OBJS += nan_usd.c
+L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
 ifdef CONFIG_OWE
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
@@ -988,6 +994,9 @@ OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
 endif
+ifdef CONFIG_NAN_USD
+OBJS += src/ap/nan_usd_ap.c
+endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
 endif
@@ -1006,6 +1015,7 @@ endif
 
 ifdef CONFIG_TESTING_OPTIONS
 L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+NEED_AES_WRAP=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR

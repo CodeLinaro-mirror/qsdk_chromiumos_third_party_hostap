@@ -1,6 +1,6 @@
 /*
  * hostapd / Configuration definitions and helpers functions
- * Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -405,6 +405,7 @@ struct hostapd_bss_config {
 	int ft_over_ds;
 	int ft_psk_generate_local;
 	int r1_max_key_lifetime;
+	char *rxkh_file;
 #endif /* CONFIG_IEEE80211R_AP */
 
 	char *ctrl_interface; /* directory for UNIX domain sockets */
@@ -704,6 +705,10 @@ struct hostapd_bss_config {
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int oci_freq_override_wnm_sleep;
+	struct wpabuf *eapol_m1_elements;
+	struct wpabuf *eapol_m3_elements;
+	bool eapol_m3_no_encrypt;
+	int test_assoc_comeback_type;
 
 #ifdef CONFIG_IEEE80211BE
 	u16 eht_oper_puncturing_override;
@@ -1346,6 +1351,7 @@ void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
 void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
 void hostapd_config_free_eap_users(struct hostapd_eap_user *user);
 void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **p);
+void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf);
 void hostapd_config_free_bss(struct hostapd_bss_config *conf);
 void hostapd_config_free(struct hostapd_config *conf);
 int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,

@@ -158,7 +158,7 @@ def start_eht_sae_ap(apdev, ml=False, transition_mode=False):
     params['group_cipher'] = "CCMP" if transition_mode else "GCMP-256"
     params["group_mgmt_cipher"] = "AES-128-CMAC" if transition_mode else "BIP-GMAC-256"
     params['beacon_prot'] = '1'
-    params['wpa_key_mgmt'] = "SAE SAE-EXT-KEY" if transition_mode else 'SAE-EXT-KEY'
+    params['wpa_key_mgmt'] = "SAE SAE-EXT-KEY WPA-PSK WPA-PSK-SHA256" if transition_mode else 'SAE-EXT-KEY'
     params['sae_groups'] = "19 20" if transition_mode else "20"
     params['sae_pwe'] = "2" if transition_mode else "1"
     if ml:
@@ -220,6 +220,10 @@ def test_eht_sae_mlo_tm(dev, apdev):
         dev[1].set("sae_groups", "19")
         dev[1].connect("eht", key_mgmt="SAE-EXT-KEY", psk="12345678",
                        ieee80211w="2", beacon_prot="1",
+                       pairwise="CCMP", group="CCMP",
+                       group_mgmt="AES-128-CMAC", scan_freq="2412",
+                       disable_eht="1")
+        dev[2].connect("eht", key_mgmt="WPA-PSK", psk="12345678",
                        pairwise="CCMP", group="CCMP",
                        group_mgmt="AES-128-CMAC", scan_freq="2412",
                        disable_eht="1")
@@ -431,7 +435,8 @@ def test_eht_mld_sae_single_link(dev, apdev):
         eht_verify_wifi_version(wpas)
         traffic_test(wpas, hapd0)
 
-def run_eht_mld_sae_two_links(dev, apdev, beacon_prot="1"):
+def run_eht_mld_sae_two_links(dev, apdev, beacon_prot="1",
+                              disable_enable=False):
     with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
         HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
 
@@ -470,6 +475,42 @@ def run_eht_mld_sae_two_links(dev, apdev, beacon_prot="1"):
         traffic_test(wpas, hapd0)
         traffic_test(wpas, hapd1)
 
+        if disable_enable:
+            if "OK" not in hapd0.request("DISABLE_MLD"):
+                raise Exception("DISABLE_MLD failed")
+            ev = hapd0.wait_event(["AP-DISABLED"], timeout=1)
+            if ev is None:
+                raise Exception("AP-DISABLED not received (0)")
+            ev = hapd1.wait_event(["AP-DISABLED"], timeout=1)
+            if ev is None:
+                raise Exception("AP-DISABLED not received (1)")
+
+            # mac80211 does not seem to detect beacon loss or deauthentication
+            # in non-AP MLD case?! For now, ignore that and just force
+            # disconnection locally on the STA.
+            wpas.request("DISCONNECT")
+            wpas.wait_disconnected()
+
+            if "OK" not in hapd0.request("ENABLE_MLD"):
+                raise Exception("ENABLE_MLD failed")
+            ev = hapd0.wait_event(["AP-ENABLED"], timeout=1)
+            if ev is None:
+                raise Exception("AP-ENABLED not received (0)")
+            ev = hapd1.wait_event(["AP-ENABLED"], timeout=1)
+            if ev is None:
+                raise Exception("AP-ENABLED not received (1)")
+
+            # TODO: Figure out why this fails without PMKSA_FLUSH. Things should
+            # fall back to full SAE from failed PMKSA caching attempt
+            # automatically.
+            wpas.request("PMKSA_FLUSH")
+            wpas.request("RECONNECT")
+            wpas.wait_connected()
+            hapd0.wait_sta()
+            hapd1.wait_sta()
+            traffic_test(wpas, hapd0)
+            traffic_test(wpas, hapd1)
+
 def test_eht_mld_sae_two_links(dev, apdev):
     """EHT MLD AP with MLD client SAE H2E connection using two links"""
     run_eht_mld_sae_two_links(dev, apdev)
@@ -477,6 +518,10 @@ def test_eht_mld_sae_two_links(dev, apdev):
 def test_eht_mld_sae_two_links_no_beacon_prot(dev, apdev):
     """EHT MLD AP with MLD client SAE H2E connection using two links and no beacon protection"""
     run_eht_mld_sae_two_links(dev, apdev, beacon_prot="0")
+
+def test_eht_mld_sae_two_links_disable_enable(dev, apdev):
+    """AP MLD with two links and disabling/enabling full AP MLD"""
+    run_eht_mld_sae_two_links(dev, apdev, disable_enable=True)
 
 def test_eht_mld_sae_ext_one_link(dev, apdev):
     """EHT MLD AP with MLD client SAE-EXT H2E connection using single link"""
@@ -1606,3 +1651,74 @@ def test_eht_mld_rrm_beacon_req(dev, apdev):
 
         if not report.last_indication:
             raise Exception("Last Beacon Report Indication subelement missing")
+
+def test_eht_mld_legacy_stas(dev, apdev):
+    """EHT AP MLD and multiple non-MLD STAs"""
+    for i in range(3):
+        check_sae_capab(dev[i])
+
+    with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface):
+        password = 'qwertyuiop'
+        ssid = "ap_mld_sae"
+        params = eht_mld_ap_wpa2_params(ssid, password,
+                                        key_mgmt="SAE SAE-EXT-KEY",
+                                        mfp="2", pwe='2')
+        params['rsn_pairwise'] = "CCMP GCMP-256"
+        params['sae_groups'] = "19 20"
+        hapd0 = eht_mld_enable_ap(hapd_iface, params)
+
+        for i in range(3):
+            dev[i].connect(ssid, sae_password=password, scan_freq="2412",
+                           key_mgmt="SAE", ieee80211w="2", disable_eht="1")
+        hapd0.wait_sta()
+        hapd0.wait_sta()
+        hapd0.wait_sta()
+        aid = []
+        for i in range(3):
+            aid.append(int(hapd0.get_sta(dev[i].own_addr())['aid']))
+            traffic_test(dev[i], hapd0)
+        logger.info("Assigned AIDs: " + str(aid))
+        if len(set(aid)) != 3:
+            raise Exception("AP did not assign unique AID to each STA")
+
+def test_eht_mld_and_mlds(dev, apdev):
+    """EHT AP MLD and multiple non-AP MLDs"""
+    check_sae_capab(dev[0])
+
+    with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
+            HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface), \
+            HWSimRadio(use_mlo=True) as (wpas_radio2, wpas_iface2):
+        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+        wpas.interface_add(wpas_iface)
+        check_sae_capab(wpas)
+
+        wpas2 = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+        wpas2.interface_add(wpas_iface2)
+        check_sae_capab(wpas2)
+
+        password = 'qwertyuiop'
+        ssid = "ap_mld_sae"
+        params = eht_mld_ap_wpa2_params(ssid, password,
+                                        key_mgmt="SAE SAE-EXT-KEY",
+                                        mfp="2", pwe='2')
+        params['rsn_pairwise'] = "CCMP GCMP-256"
+        params['sae_groups'] = "19 20"
+        hapd0 = eht_mld_enable_ap(hapd_iface, params)
+
+        wpas.set("sae_pwe", "1")
+        wpas.connect(ssid, sae_password=password, scan_freq="2412",
+                     key_mgmt="SAE-EXT-KEY", ieee80211w="2")
+        wpas2.set("sae_pwe", "1")
+        wpas2.connect(ssid, sae_password=password, scan_freq="2412",
+                      key_mgmt="SAE-EXT-KEY", ieee80211w="2")
+
+        hapd0.wait_sta()
+        hapd0.wait_sta()
+        aid = []
+        aid.append(int(hapd0.get_sta(wpas.own_addr())['aid']))
+        traffic_test(wpas, hapd0)
+        aid.append(int(hapd0.get_sta(wpas2.own_addr())['aid']))
+        traffic_test(wpas2, hapd0)
+        logger.info("Assigned AIDs: " + str(aid))
+        if len(set(aid)) != 2:
+            raise Exception("AP MLD did not assign unique AID to each non-AP MLD")

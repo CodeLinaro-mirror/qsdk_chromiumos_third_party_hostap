@@ -583,6 +583,9 @@ static u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 		/* BSS Parameters Change Count */
 		wpabuf_put_u8(buf, hapd->eht_mld_bss_param_change);
 
+		if (!link->resp_sta_profile)
+			continue;
+
 		/* Fragment the sub element if needed */
 		if (total_len <= 255) {
 			wpabuf_put_data(buf, link->resp_sta_profile,
@@ -779,11 +782,12 @@ u8 * hostapd_eid_eht_ml_beacon(struct hostapd_data *hapd,
 u8 * hostapd_eid_eht_ml_assoc(struct hostapd_data *hapd, struct sta_info *info,
 			      u8 *eid)
 {
-	if (!info || !info->mld_info.mld_sta)
+	if (!ap_sta_is_mld(hapd, info))
 		return eid;
 
 	eid = hostapd_eid_eht_basic_ml_common(hapd, eid, &info->mld_info,
 					      false);
+	ap_sta_free_sta_profile(&info->mld_info);
 	return hostapd_eid_eht_reconf_ml(hapd, eid);
 }
 
@@ -1012,11 +1016,12 @@ const u8 * hostapd_process_ml_auth(struct hostapd_data *hapd,
 
 
 static int hostapd_mld_validate_assoc_info(struct hostapd_data *hapd,
-					   struct mld_info *info)
+					   struct sta_info *sta)
 {
 	u8 i, link_id;
+	struct mld_info *info = &sta->mld_info;
 
-	if (!info->mld_sta) {
+	if (!ap_sta_is_mld(hapd, sta)) {
 		wpa_printf(MSG_DEBUG, "MLD: Not a non-AP MLD");
 		return 0;
 	}
@@ -1250,7 +1255,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		goto out;
 	}
 
-	info->links[hapd->mld_link_id].valid = true;
+	info->links[hapd->mld_link_id].valid = 1;
 
 	/* Parse the link info field */
 	ml_len -= sizeof(*ml) + common_info_len;
@@ -1377,7 +1382,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		ml_len -= sub_elem_len;
 
 		wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
-			   ", nstr bitmap len=%lu",
+			   ", nstr bitmap len=%u",
 			   control, MAC2STR(link_info->peer_addr),
 			   link_info->nstr_bitmap_len);
 
@@ -1390,7 +1395,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		goto out;
 	}
 
-	ret = hostapd_mld_validate_assoc_info(hapd, info);
+	ret = hostapd_mld_validate_assoc_info(hapd, sta);
 out:
 	wpabuf_free(mlbuf);
 	if (ret) {

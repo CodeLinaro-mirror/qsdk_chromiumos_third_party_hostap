@@ -188,7 +188,7 @@ static int dfs_chan_range_available(struct hostapd_hw_modes *mode,
 	 * If it's not allowed to use the first channel as primary, decline the
 	 * whole channel range. */
 	if (!chan_pri_allowed(first_chan)) {
-		wpa_printf(MSG_DEBUG, "DFS: primary chanenl not allowed");
+		wpa_printf(MSG_DEBUG, "DFS: primary channel not allowed");
 		return 0;
 	}
 
@@ -551,6 +551,8 @@ dfs_get_valid_channel(struct hostapd_iface *iface,
 	if (os_get_random((u8 *) &_rand, sizeof(_rand)) < 0)
 		return NULL;
 	chan_idx = _rand % num_available_chandefs;
+	wpa_printf(MSG_DEBUG, "DFS: Picked random entry from the list: %d/%d",
+		   chan_idx, num_available_chandefs);
 	dfs_find_channel(iface, &chan, chan_idx, type);
 	if (!chan) {
 		wpa_printf(MSG_DEBUG, "DFS: no random channel found");

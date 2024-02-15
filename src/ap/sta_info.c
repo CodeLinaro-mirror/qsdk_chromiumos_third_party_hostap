@@ -303,7 +303,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	ieee802_1x_free_station(hapd, sta);
 
 #ifdef CONFIG_IEEE80211BE
-	if (!hapd->conf->mld_ap || !sta->mld_info.mld_sta ||
+	if (!ap_sta_is_mld(hapd, sta) ||
 	    hapd->mld_link_id == sta->mld_assoc_link_id)
 		wpa_auth_sta_deinit(sta->wpa_sm);
 #else
@@ -350,6 +350,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 #ifdef CONFIG_INTERWORKING
 	if (sta->gas_dialog) {
 		int i;
+
 		for (i = 0; i < GAS_DIALOG_MAX; i++)
 			gas_serv_dialog_clear(&sta->gas_dialog[i]);
 		os_free(sta->gas_dialog);
@@ -419,6 +420,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 #endif /* CONFIG_PASN */
 
 	os_free(sta->ifname_wds);
+
+#ifdef CONFIG_IEEE80211BE
+	ap_sta_free_sta_profile(&sta->mld_info);
+#endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_TESTING_OPTIONS
 	os_free(sta->sae_postponed_commit);
@@ -1400,7 +1405,7 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
 		int mld_assoc_link_id = -1;
 
 #ifdef CONFIG_IEEE80211BE
-		if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
+		if (ap_sta_is_mld(hapd, sta)) {
 			if (sta->mld_assoc_link_id == hapd->mld_link_id)
 				mld_assoc_link_id = sta->mld_assoc_link_id;
 			else
@@ -1757,7 +1762,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
 	 */
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
+	if (ap_sta_is_mld(hapd, sta)) {
 		u8 mld_link_id = hapd->mld_link_id;
 
 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
@@ -1791,3 +1796,19 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
 	sta->added_unassoc = 1;
 	return 0;
 }
+
+
+#ifdef CONFIG_IEEE80211BE
+void ap_sta_free_sta_profile(struct mld_info *info)
+{
+	int i;
+
+	if (!info)
+		return;
+
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		os_free(info->links[i].resp_sta_profile);
+		info->links[i].resp_sta_profile = NULL;
+	}
+}
+#endif /* CONFIG_IEEE80211BE */

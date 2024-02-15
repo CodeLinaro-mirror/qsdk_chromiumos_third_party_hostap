@@ -1,6 +1,6 @@
 /*
  * WPA Supplicant
- * Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -65,6 +65,7 @@
 #include "wpas_kay.h"
 #include "mesh.h"
 #include "dpp_supplicant.h"
+#include "nan_usd.h"
 #ifdef CONFIG_MESH
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
@@ -749,6 +750,10 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	dpp_global_deinit(wpa_s->dpp);
 	wpa_s->dpp = NULL;
 #endif /* CONFIG_DPP */
+
+#ifdef CONFIG_NAN_USD
+	wpas_nan_usd_deinit(wpa_s);
+#endif /* CONFIG_NAN_USD */
 
 #ifdef CONFIG_PASN
 	wpas_pasn_auth_stop(wpa_s);
@@ -2120,7 +2125,9 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx,
 	case 2: /* Bits 16-23 */
 #ifdef CONFIG_WNM
 		*pos |= 0x02; /* Bit 17 - WNM-Sleep Mode */
-		if (!wpa_s->disable_mbo_oce && !wpa_s->conf->disable_btm)
+		if ((wpas_driver_bss_selection(wpa_s) ||
+		     !wpa_s->disable_mbo_oce) &&
+		    !wpa_s->conf->disable_btm)
 			*pos |= 0x08; /* Bit 19 - BSS Transition */
 #endif /* CONFIG_WNM */
 		break;
@@ -5862,6 +5869,7 @@ wpa_supplicant_alloc(struct wpa_supplicant *parent)
 	dl_list_init(&wpa_s->fils_hlp_req);
 #ifdef CONFIG_TESTING_OPTIONS
 	dl_list_init(&wpa_s->drv_signal_override);
+	wpa_s->test_assoc_comeback_type = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifndef CONFIG_NO_ROBUST_AV
 	dl_list_init(&wpa_s->active_scs_ids);
@@ -7194,6 +7202,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
+			 wpa_s->conf->ft_prepend_pmkid);
+
 	wpa_s->hw.modes = wpa_drv_get_hw_feature_data(wpa_s,
 						      &wpa_s->hw.num_modes,
 						      &wpa_s->hw.flags,
@@ -7331,6 +7342,11 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 	if (wpas_dpp_init(wpa_s) < 0)
 		return -1;
 #endif /* CONFIG_DPP */
+
+#ifdef CONFIG_NAN_USD
+	if (wpas_nan_usd_init(wpa_s) < 0)
+		return -1;
+#endif /* CONFIG_NAN_USD */
 
 	if (wpa_supplicant_init_eapol(wpa_s) < 0)
 		return -1;
@@ -8152,6 +8168,10 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s)
 
 	if (wpa_s->conf->changed_parameters & CFG_CHANGED_DISABLE_BTM)
 		wpa_supplicant_set_default_scan_ies(wpa_s);
+
+	if (wpa_s->conf->changed_parameters & CFG_CHANGED_FT_PREPEND_PMKID)
+		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
+				 wpa_s->conf->ft_prepend_pmkid);
 
 #ifdef CONFIG_BGSCAN
 	/*

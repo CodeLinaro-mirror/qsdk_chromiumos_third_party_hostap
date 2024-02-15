@@ -279,6 +279,8 @@ CFLAGS += -DCONFIG_OCV
 OBJS += ../src/common/ocv.o
 endif
 
+NEED_AES_UNWRAP=y
+
 ifdef CONFIG_IEEE80211R
 CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
 OBJS += ../src/ap/wpa_auth_ft.o
@@ -606,6 +608,12 @@ endif
 ifdef CONFIG_DPP3
 CFLAGS += -DCONFIG_DPP3
 endif
+endif
+
+ifdef CONFIG_NAN_USD
+OBJS += ../src/common/nan_de.o
+OBJS += ../src/ap/nan_usd_ap.o
+CFLAGS += -DCONFIG_NAN_USD
 endif
 
 ifdef CONFIG_PASN
