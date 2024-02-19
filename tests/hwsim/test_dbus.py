@@ -6374,3 +6374,67 @@ def test_dbus_anqp_get(dev, apdev):
     bss = dev[0].get_bss(bssid)
     if 'anqp_capability_list' not in bss:
         raise Exception("Capability List ANQP-element not seen")
+
+def test_dbus_anqp_query_done(dev, apdev):
+    "D-Bus ANQP get test"
+
+    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    venue_group = 1
+    venue_type = 13
+    lang1 = "eng"
+    name1 = "Example venue"
+    lang2 = "fin"
+    name2 = "Esimerkkipaikka"
+
+    bssid = apdev[0]['bssid']
+    params = {"ssid": "test-anqp", "hessid": bssid, "wpa": "2",
+              "rsn_pairwise": "CCMP", "wpa_key_mgmt": "WPA-EAP",
+              "ieee80211w": "1", "ieee8021x": "1",
+              "auth_server_addr": "127.0.0.1", "auth_server_port": "1812",
+              "auth_server_shared_secret": "radius",
+              "interworking": "1",
+              "venue_group": str(venue_group),
+              "venue_type": str(venue_type),
+              "venue_name": [lang1 + ":" + name1, lang2 + ":" + name2],
+              "roaming_consortium": ["112233", "1020304050", "010203040506", "fedcba"],
+              "domain_name": "example.com,another.example.com",
+              "nai_realm": ["0,example.com,13[5:6],21[2:4][5:7]", "0,another.example.com"],
+              'mbo': '1',
+              'mbo_cell_data_conn_pref': '1',
+              'hs20': '1',
+              'hs20_oper_friendly_name': ["eng:Example operator", "fin:Esimerkkioperaattori"]}
+
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    class TestDbusANQPGet(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.anqp_query_done = False
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_query)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.anqpQueryDone, WPAS_DBUS_IFACE,
+                            "ANQPQueryDone")
+            self.loop.run()
+            return self
+
+        def anqpQueryDone(self, addr, result):
+            logger.debug("anqpQueryDone: addr=%s result=%s" % (addr, result))
+            if addr == bssid and "SUCCESS" in result:
+                self.anqp_query_done = True
+
+        def run_query(self, *args):
+            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+            iface.ANQPGet({"addr": bssid,
+                           "ids": dbus.Array([257], dbus.Signature("q"))})
+            return False
+
+        def success(self):
+            return self.anqp_query_done
+
+    with TestDbusANQPGet(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
