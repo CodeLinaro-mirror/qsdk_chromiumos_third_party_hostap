@@ -2737,8 +2737,14 @@ static void qca_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_PUNCTURE_BITMAP])
 		event.acs_selected_channels.puncture_bitmap =
 			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_ACS_PUNCTURE_BITMAP]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID])
+		event.acs_selected_channels.link_id =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID]);
+	else
+		event.acs_selected_channels.link_id = -1;
+
 	wpa_printf(MSG_INFO,
-		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d PUNCBITMAP: 0x%x",
+		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d PUNCBITMAP: 0x%x, LinkId: %d",
 		   event.acs_selected_channels.pri_freq,
 		   event.acs_selected_channels.sec_freq,
 		   event.acs_selected_channels.ch_width,
@@ -2746,7 +2752,8 @@ static void qca_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 		   event.acs_selected_channels.vht_seg1_center_ch,
 		   event.acs_selected_channels.hw_mode,
 		   event.acs_selected_channels.edmg_channel,
-		   event.acs_selected_channels.puncture_bitmap);
+		   event.acs_selected_channels.puncture_bitmap,
+		   event.acs_selected_channels.link_id);
 
 	/* Ignore ACS channel list check for backwards compatibility */
 
@@ -4095,6 +4102,21 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 }
 
 
+static bool nl80211_drv_in_list(struct nl80211_global *global,
+				struct wpa_driver_nl80211_data *drv)
+{
+	struct wpa_driver_nl80211_data *tmp;
+
+	dl_list_for_each(tmp, &global->interfaces,
+			 struct wpa_driver_nl80211_data, list) {
+		if (drv == tmp)
+			return true;
+	}
+
+	return false;
+}
+
+
 int process_global_event(struct nl_msg *msg, void *arg)
 {
 	struct nl80211_global *global = arg;
@@ -4159,6 +4181,12 @@ int process_global_event(struct nl_msg *msg, void *arg)
 				do_process_drv_event(bss, gnlh->cmd, tb);
 				if (!wiphy_idx_set)
 					return NL_SKIP;
+				/* The driver instance could have been removed,
+				 * e.g., due to NL80211_CMD_RADAR_DETECT event,
+				 * so need to stop the loop if that has
+				 * happened. */
+				if (!nl80211_drv_in_list(global, drv))
+					break;
 			}
 		}
 	}

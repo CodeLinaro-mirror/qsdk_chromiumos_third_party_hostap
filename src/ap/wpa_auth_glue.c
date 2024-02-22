@@ -183,6 +183,12 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	wconf->oci_freq_override_ft_assoc = conf->oci_freq_override_ft_assoc;
 	wconf->oci_freq_override_fils_assoc =
 		conf->oci_freq_override_fils_assoc;
+
+	if (conf->eapol_m1_elements)
+		wconf->eapol_m1_elements = wpabuf_dup(conf->eapol_m1_elements);
+	if (conf->eapol_m3_elements)
+		wconf->eapol_m3_elements = wpabuf_dup(conf->eapol_m3_elements);
+	wconf->eapol_m3_no_encrypt = conf->eapol_m3_no_encrypt;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);
@@ -554,7 +560,8 @@ int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
 	if (sta) {
 		flags = hostapd_sta_flags_to_drv(sta->flags);
 #ifdef CONFIG_IEEE80211BE
-		if (sta->mld_info.mld_sta && (sta->flags & WLAN_STA_AUTHORIZED))
+		if (ap_sta_is_mld(hapd, sta) &&
+		    (sta->flags & WLAN_STA_AUTHORIZED))
 			link_id = -1;
 #endif /* CONFIG_IEEE80211BE */
 	}

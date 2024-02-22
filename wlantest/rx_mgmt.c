@@ -2207,7 +2207,8 @@ static void rx_mgmt_reassoc_resp(struct wlantest *wt, const u8 *data,
 
 				os_memcpy(rsne_buf, l_bss->rsnie, rsne_len);
 				if (wpa_insert_pmkid(rsne_buf, &rsne_len,
-						     sta->pmk_r1_name) < 0) {
+						     sta->pmk_r1_name,
+						     true) < 0) {
 					wpa_printf(MSG_DEBUG,
 						   "FT: Could not insert PMKR1Name into AP RSNE for link ID %u ",
 						   link_id);
@@ -3062,21 +3063,21 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
 }
 
 
-static u8 * try_tk(struct wpa_ptk *ptk, size_t ptk_len,
+static u8 * try_tk(struct wpa_ptk *ptk,
 		   const u8 *data, size_t len, size_t *dlen)
 {
 	const struct ieee80211_hdr *hdr;
 	u8 *decrypted, *frame;
 
 	hdr = (const struct ieee80211_hdr *) data;
-	if (ptk_len == 16) {
+	if (ptk->tk_len == 16) {
 		decrypted = ccmp_decrypt(ptk->tk, hdr, NULL, NULL, NULL,
 					 data + 24, len - 24, dlen);
 		if (!decrypted)
 			decrypted = gcmp_decrypt(ptk->tk, 16, hdr, NULL, NULL,
 						 NULL,
 						 data + 24, len - 24, dlen);
-	} else if (ptk_len == 32) {
+	} else if (ptk->tk_len == 32) {
 		decrypted = ccmp_256_decrypt(ptk->tk, hdr, NULL, NULL, NULL,
 					     data + 24, len - 24, dlen);
 		if (!decrypted)
@@ -3112,7 +3113,7 @@ static u8 * mgmt_decrypt_tk(struct wlantest *wt, const u8 *data, size_t len,
 
 	wpa_debug_level = MSG_WARNING;
 	dl_list_for_each(ptk, &wt->ptk, struct wlantest_ptk, list) {
-		decrypted = try_tk(&ptk->ptk, ptk->ptk_len, data, len, dlen);
+		decrypted = try_tk(&ptk->ptk, data, len, dlen);
 		if (decrypted) {
 			wpa_debug_level = prev_level;
 			add_note(wt, MSG_DEBUG,

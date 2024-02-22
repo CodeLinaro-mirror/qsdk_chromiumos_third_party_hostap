@@ -1,6 +1,6 @@
 /*
  * wpa_supplicant - Internal definitions
- * Copyright (c) 2003-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -1033,6 +1033,7 @@ struct wpa_supplicant {
 		bool ext_ml_auth;
 		int *sae_rejected_groups;
 #endif /* CONFIG_SAE */
+		u16 assoc_auth_type;
 	} sme;
 #endif /* CONFIG_SME */
 
@@ -1365,6 +1366,7 @@ struct wpa_supplicant {
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int oci_freq_override_wnm_sleep;
 	unsigned int disable_eapol_g2_tx;
+	int test_assoc_comeback_type;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
@@ -1597,6 +1599,12 @@ struct wpa_supplicant {
 	 * owe_transition_search == 1 */
 	int *owe_trans_scan_freq;
 #endif /* CONFIG_OWE */
+
+#ifdef CONFIG_NAN_USD
+	struct nan_de *nan_de;
+	struct wpa_radio_work *nan_usd_listen_work;
+	struct wpa_radio_work *nan_usd_tx_work;
+#endif /* CONFIG_NAN_USD */
 };
 
 

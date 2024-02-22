@@ -1,6 +1,6 @@
 /*
  * wpa_supplicant - SME
- * Copyright (c) 2009-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2009-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -1904,7 +1904,7 @@ static int sme_sae_set_pmk(struct wpa_supplicant *wpa_s, const u8 *bssid)
 		}
 		if (wpa_insert_pmkid(wpa_s->sme.assoc_req_ie,
 				     &wpa_s->sme.assoc_req_ie_len,
-				     wpa_s->sme.sae.pmkid) < 0)
+				     wpa_s->sme.sae.pmkid, true) < 0)
 			return -1;
 		wpa_hexdump(MSG_DEBUG,
 			    "SME: Updated Association Request IEs",
@@ -2207,6 +2207,9 @@ void sme_associate(struct wpa_supplicant *wpa_s, enum wpas_mode mode,
 #endif /* CONFIG_VHT_OVERRIDES */
 
 	os_memset(&params, 0, sizeof(params));
+
+	/* Save auth type, in case we need to retry after comeback timer. */
+	wpa_s->sme.assoc_auth_type = auth_type;
 
 #ifdef CONFIG_FILS
 	if (auth_type == WLAN_AUTH_FILS_SK ||
@@ -2718,15 +2721,115 @@ static void sme_deauth(struct wpa_supplicant *wpa_s, const u8 **link_bssids)
 }
 
 
+static void sme_assoc_comeback_timer(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+
+	if (!wpa_s->current_bss || !wpa_s->current_ssid) {
+		wpa_msg(wpa_s, MSG_DEBUG,
+			"SME: Comeback timeout expired; SSID/BSSID cleared; ignoring");
+		return;
+	}
+
+	wpa_msg(wpa_s, MSG_DEBUG,
+		"SME: Comeback timeout expired; retry associating with "
+		MACSTR "; mode=%d auth_type=%u",
+		MAC2STR(wpa_s->current_bss->bssid),
+		wpa_s->current_ssid->mode,
+		wpa_s->sme.assoc_auth_type);
+
+	/* Authentication state was completed already; just try association
+	 * again. */
+	sme_associate(wpa_s, wpa_s->current_ssid->mode,
+		      wpa_s->current_bss->bssid,
+		      wpa_s->sme.assoc_auth_type);
+}
+
+
+static bool sme_try_assoc_comeback(struct wpa_supplicant *wpa_s,
+				   union wpa_event_data *data)
+{
+	struct ieee802_11_elems elems;
+	u32 timeout_interval;
+	unsigned long comeback_usec;
+	u8 type = WLAN_TIMEOUT_ASSOC_COMEBACK;
+
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->test_assoc_comeback_type != -1)
+		type = wpa_s->test_assoc_comeback_type;
+#endif /* CONFIG_TESTING_OPTIONS */
+
+	if (ieee802_11_parse_elems(data->assoc_reject.resp_ies,
+				   data->assoc_reject.resp_ies_len,
+				   &elems, 0) == ParseFailed) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"SME: Temporary assoc reject: failed to parse (Re)Association Response frame elements");
+		return false;
+	}
+
+	if (!elems.timeout_int) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"SME: Temporary assoc reject: missing timeout interval IE");
+		return false;
+	}
+
+	if (elems.timeout_int[0] != type) {
+		wpa_msg(wpa_s, MSG_INFO,
+			"SME: Temporary assoc reject: missing association comeback time");
+		return false;
+	}
+
+	timeout_interval = WPA_GET_LE32(&elems.timeout_int[1]);
+	if (timeout_interval > 60000) {
+		/* This is unprotected information and there is no point in
+		 * getting stuck waiting for very long duration based on it */
+		wpa_msg(wpa_s, MSG_DEBUG,
+			"SME: Ignore overly long association comeback interval: %u TUs",
+			timeout_interval);
+		return false;
+	}
+	wpa_msg(wpa_s, MSG_DEBUG, "SME: Association comeback interval: %u TUs",
+		timeout_interval);
+
+	comeback_usec = timeout_interval * 1024;
+	eloop_register_timeout(comeback_usec / 1000000, comeback_usec % 1000000,
+			       sme_assoc_comeback_timer, wpa_s, NULL);
+	return true;
+}
+
+
 void sme_event_assoc_reject(struct wpa_supplicant *wpa_s,
 			    union wpa_event_data *data,
 			    const u8 **link_bssids)
 {
+	const u8 *bssid;
+
+	if (wpa_s->valid_links)
+		bssid = wpa_s->ap_mld_addr;
+	else
+		bssid = wpa_s->pending_bssid;
+
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Association with " MACSTR " failed: "
 		"status code %d", MAC2STR(wpa_s->pending_bssid),
 		data->assoc_reject.status_code);
 
 	eloop_cancel_timeout(sme_assoc_timer, wpa_s, NULL);
+	eloop_cancel_timeout(sme_assoc_comeback_timer, wpa_s, NULL);
+
+	/* Authentication phase has been completed at this point. Check whether
+	 * the AP rejected association temporarily due to still holding a
+	 * security associationis with us (MFP). If so, we must wait for the
+	 * AP's association comeback timeout period before associating again. */
+	if (data->assoc_reject.status_code ==
+	    WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY) {
+		wpa_msg(wpa_s, MSG_DEBUG,
+			"SME: Temporary association reject from BSS " MACSTR,
+			MAC2STR(bssid));
+		if (sme_try_assoc_comeback(wpa_s, data)) {
+			/* Break out early; comeback error is not a failure. */
+			return;
+		}
+	}
 
 #ifdef CONFIG_SAE
 	if (wpa_s->sme.sae_pmksa_caching && wpa_s->current_ssid &&
@@ -2738,12 +2841,6 @@ void sme_event_assoc_reject(struct wpa_supplicant *wpa_s,
 		if (wpa_s->current_bss) {
 			struct wpa_bss *bss = wpa_s->current_bss;
 			struct wpa_ssid *ssid = wpa_s->current_ssid;
-			const u8 *bssid;
-
-			if (wpa_s->valid_links)
-				bssid = wpa_s->ap_mld_addr;
-			else
-				bssid = wpa_s->pending_bssid;
 
 			wpa_drv_deauthenticate(wpa_s, bssid,
 					       WLAN_REASON_DEAUTH_LEAVING);
@@ -2854,8 +2951,10 @@ static void sme_assoc_timer(void *eloop_ctx, void *timeout_ctx)
 void sme_state_changed(struct wpa_supplicant *wpa_s)
 {
 	/* Make sure timers are cleaned up appropriately. */
-	if (wpa_s->wpa_state != WPA_ASSOCIATING)
+	if (wpa_s->wpa_state != WPA_ASSOCIATING) {
 		eloop_cancel_timeout(sme_assoc_timer, wpa_s, NULL);
+		eloop_cancel_timeout(sme_assoc_comeback_timer, wpa_s, NULL);
+	}
 	if (wpa_s->wpa_state != WPA_AUTHENTICATING)
 		eloop_cancel_timeout(sme_auth_timer, wpa_s, NULL);
 }
@@ -2888,6 +2987,7 @@ void sme_deinit(struct wpa_supplicant *wpa_s)
 	eloop_cancel_timeout(sme_assoc_timer, wpa_s, NULL);
 	eloop_cancel_timeout(sme_auth_timer, wpa_s, NULL);
 	eloop_cancel_timeout(sme_obss_scan_timeout, wpa_s, NULL);
+	eloop_cancel_timeout(sme_assoc_comeback_timer, wpa_s, NULL);
 }
 
 

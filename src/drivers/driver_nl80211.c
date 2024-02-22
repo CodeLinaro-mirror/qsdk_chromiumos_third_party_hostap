@@ -498,7 +498,7 @@ int send_and_recv(struct nl80211_global *global,
 		  void *ack_data,
 		  struct nl80211_err_info *err_info)
 {
-	struct nl_cb *cb;
+	struct nl_cb *cb, *s_nl_cb;
 	struct nl80211_ack_err_args err;
 	int opt;
 
@@ -507,7 +507,9 @@ int send_and_recv(struct nl80211_global *global,
 
 	err.err = -ENOMEM;
 
-	cb = nl_cb_clone(nl_socket_get_cb(nl_handle));
+	s_nl_cb = nl_socket_get_cb(nl_handle);
+	cb = nl_cb_clone(s_nl_cb);
+	nl_cb_put(s_nl_cb);
 	if (!cb)
 		goto out;
 
@@ -2562,6 +2564,13 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 					  5) < 0)
 		ret = -1;
 #endif /* CONFIG_P2P */
+#ifdef CONFIG_NAN_USD
+	/* NAN SDF Public Action */
+	if (nl80211_register_action_frame(bss,
+					  (u8 *) "\x04\x09\x50\x6f\x9a\x13",
+					  6) < 0)
+		ret = -1;
+#endif /* CONFIG_NAN_USD */
 #ifdef CONFIG_DPP
 	/* DPP Public Action */
 	if (nl80211_register_action_frame(bss,
@@ -4878,7 +4887,8 @@ static int nl80211_mbssid(struct nl_msg *msg,
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
-				    const int *freqs, int num_freqs)
+				     const int *freqs, int num_freqs,
+				     int link_id)
 {
 	struct nl_msg *msg;
 	struct nlattr *params, *freqs_list;
@@ -4894,6 +4904,10 @@ static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
 			QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION) ||
 	    !(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)))
+		goto err;
+
+	if (link_id != NL80211_DRV_LINK_ID_NA &&
+	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_CONFIG_MLO_LINK_ID, link_id))
 		goto err;
 
 	freqs_list = nla_nest_start(
@@ -5404,7 +5418,9 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs)
 		qca_set_allowed_ap_freqs(drv, params->allowed_freqs,
-					 int_array_len(params->allowed_freqs));
+					 int_array_len(params->allowed_freqs),
+					 params->mld_ap ? params->mld_link_id :
+					 NL80211_DRV_LINK_ID_NA);
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	if (nla_put_flag(msg, NL80211_ATTR_SOCKET_OWNER))
@@ -6854,7 +6870,13 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		if (params->wpa_proto & WPA_PROTO_WPA)
 			ver |= NL80211_WPA_VERSION_1;
 		if (params->wpa_proto & WPA_PROTO_RSN) {
-			if (wpa_key_mgmt_sae(params->key_mgmt_suite))
+			/*
+			 * NL80211_ATTR_SAE_PASSWORD is related and was added
+			 * at the same time as NL80211_WPA_VERSION_3.
+			 */
+			if (nl80211_attr_supported(drv,
+						   NL80211_ATTR_SAE_PASSWORD) &&
+			    wpa_key_mgmt_sae(params->key_mgmt_suite))
 				ver |= NL80211_WPA_VERSION_3;
 			else
 				ver |= NL80211_WPA_VERSION_2;
@@ -12496,17 +12518,20 @@ static int nl80211_qca_do_acs(struct wpa_driver_nl80211_data *drv,
 	    add_acs_ch_list(msg, params->freq_list) ||
 	    add_acs_freq_list(msg, params->freq_list) ||
 	    (params->edmg_enabled &&
-	     nla_put_flag(msg, QCA_WLAN_VENDOR_ATTR_ACS_EDMG_ENABLED))) {
+	     nla_put_flag(msg, QCA_WLAN_VENDOR_ATTR_ACS_EDMG_ENABLED)) ||
+	    (params->link_id != NL80211_DRV_LINK_ID_NA &&
+	     nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID,
+			params->link_id))) {
 		nlmsg_free(msg);
 		return -ENOBUFS;
 	}
 	nla_nest_end(msg, data);
 
 	wpa_printf(MSG_DEBUG,
-		   "nl80211: ACS Params: HW_MODE: %d HT: %d HT40: %d VHT: %d EHT: %d BW: %d EDMG: %d",
+		   "nl80211: ACS Params: HW_MODE: %d HT: %d HT40: %d VHT: %d EHT: %d BW: %d EDMG: %d, link_id: %d",
 		   params->hw_mode, params->ht_enabled, params->ht40_enabled,
 		   params->vht_enabled, params->eht_enabled, params->ch_width,
-		   params->edmg_enabled);
+		   params->edmg_enabled, params->link_id);
 
 	ret = send_and_recv_cmd(drv, msg);
 	if (ret) {

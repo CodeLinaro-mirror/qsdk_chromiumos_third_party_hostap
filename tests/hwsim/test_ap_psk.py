@@ -1773,6 +1773,15 @@ def test_ap_wpa2_psk_ext_eapol_key_info(dev, apdev):
     rsn_eapol_key_set(msg, 0x0902, 0, snonce, rsne)
     eapol_key_mic(kck, msg)
     send_eapol(hapd, addr, build_eapol(msg))
+    # EAPOL-Key msg 4/4 with incorrectly encrypred Key Data field
+    hapd.note("RSN: AES unwrap failed - could not decrypt EAPOL-Key key data")
+    key_data = 24*b'1'
+    rsn_eapol_key_set(msg, 0x130a, 0, snonce, key_data)
+    send_eapol(hapd, addr, build_eapol(msg))
+    # EAPOL-Key msg 4/4 claimed to be encrypred with RC4
+    hapd.note("WPA: did not use HMAC-SHA1-AES with CCMP/GCMP")
+    rsn_eapol_key_set(msg, 0x1309, 0, snonce, key_data)
+    send_eapol(hapd, addr, build_eapol(msg))
 
     reply_eapol("4/4", hapd, addr, msg, 0x030a, None, None, kck)
     hapd.wait_sta(timeout=15)
@@ -3722,3 +3731,101 @@ def test_ap_wpa2_psk_4addr(dev, apdev):
             found = True
     if not found:
         raise Exception("Station interface was not seen in the bridge")
+
+def test_rsn_eapol_m1_extra(dev, apdev):
+    """Extra element and KDE in EAPOL-Key msg 1/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    # Add a reserved element and KDE into EAPOL-Key msg 1/4
+    params['eapol_m1_elements'] = '02051122334455' + 'dd05000facff11'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+
+def test_rsn_eapol_m3_extra(dev, apdev):
+    """Extra element and KDE in EAPOL-Key msg 3/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    # Add a reserved element and KDE into EAPOL-Key msg 3/4
+    params['eapol_m3_elements'] = '02051122334455' + 'dd05000facff11'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+
+def test_rsn_eapol_m3_no_encrypt(dev, apdev):
+    """EAPOL-Key msg 3/4 Key Data field not encrypted"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    # Add a reserved element and KDE into EAPOL-Key msg 3/4
+    params['eapol_m3_no_encrypt'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412", wait_connect=False)
+    ev = dev[0].wait_event(["WPA: GTK IE in unencrypted key data"], timeout=10)
+    if ev is None:
+        raise Exception("Unencrypted GTK KDE not rejected")
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+
+def test_rsn_eapol_m2_extra(dev, apdev):
+    """Extra element and KDE in EAPOL-Key msg 2/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    # Add a reserved element and KDE into EAPOL-Key msg 2/4
+    elems = '02051122334455' + 'dd05000facff11'
+    if "OK" not in dev[0].request("TEST_EAPOL_M2_ELEMS " + elems):
+        raise Exception("Failed to add test elements")
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+    hapd.wait_sta()
+
+def test_rsn_eapol_m4_extra(dev, apdev):
+    """Extra element and KDE in EAPOL-Key msg 4/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    # Add a reserved element and KDE into EAPOL-Key msg 4/4
+    elems = '02051122334455' + 'dd05000facff11'
+    if "OK" not in dev[0].request("TEST_EAPOL_M4_ELEMS " + elems):
+        raise Exception("Failed to add test elements")
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+    hapd.wait_sta()
+
+def test_rsn_eapol_m2_encrypt(dev, apdev):
+    """Encrypted Key Data field in EAPOL-Key msg 2/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    # Add a reserved element and KDE into EAPOL-Key msg 2/4 and request the
+    # Key Data field to be encrypted.
+    elems = '02051122334455' + 'dd05000facff11'
+    if "OK" not in dev[0].request("TEST_EAPOL_M2_ELEMS " + elems):
+        raise Exception("Failed to add test elements")
+    dev[0].set("encrypt_eapol_m2", "1")
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+    hapd.wait_sta()
+
+def test_rsn_eapol_m4_encrypt(dev, apdev):
+    """Encrypted Key Data field in EAPOL-Key msg 4/4"""
+    ssid = "test-rsn"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    # Add a reserved element and KDE into EAPOL-Key msg 4/4 and request the
+    # Key Data field to be encrypted.
+    elems = '02051122334455' + 'dd05000facff11'
+    if "OK" not in dev[0].request("TEST_EAPOL_M4_ELEMS " + elems):
+        raise Exception("Failed to add test elements")
+    dev[0].set("encrypt_eapol_m4", "1")
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412")
+    hapd.wait_sta()

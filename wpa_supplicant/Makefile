@@ -64,6 +64,7 @@ ifdef CONFIG_TESTING_OPTIONS
 CFLAGS += -DCONFIG_TESTING_OPTIONS
 CONFIG_WPS_TESTING=y
 CONFIG_TDLS_TESTING=y
+NEED_AES_WRAP=y
 endif
 
 mkconfig:
@@ -315,6 +316,12 @@ endif
 ifdef CONFIG_DPP3
 CFLAGS += -DCONFIG_DPP3
 endif
+endif
+
+ifdef CONFIG_NAN_USD
+OBJS += ../src/common/nan_de.o
+OBJS += nan_usd.o
+CFLAGS += -DCONFIG_NAN_USD
 endif
 
 ifdef CONFIG_OWE
@@ -1063,6 +1070,9 @@ ifdef CONFIG_DPP
 OBJS += ../src/ap/dpp_hostapd.o
 OBJS += ../src/ap/gas_query_ap.o
 NEED_AP_GAS_SERV=y
+endif
+ifdef CONFIG_NAN_USD
+OBJS += ../src/ap/nan_usd_ap.o
 endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y

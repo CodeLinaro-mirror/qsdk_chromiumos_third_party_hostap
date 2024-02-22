@@ -269,7 +269,7 @@ static bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
 				    struct sta_info *sta)
 {
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
+	if (ap_sta_is_mld(hapd, sta) &&
 	    sta->mld_assoc_link_id != hapd->mld_link_id)
 		return true;
 #endif /* CONFIG_IEEE80211BE */
@@ -839,7 +839,7 @@ int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
 		link_id = hapd->mld_link_id;
-		if (sta && sta->mld_info.mld_sta)
+		if (ap_sta_is_mld(hapd, sta))
 			own_addr = hapd->mld_addr;
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -860,7 +860,7 @@ int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
 	if (hapd->conf->mld_ap) {
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
-		if (sta && sta->mld_info.mld_sta)
+		if (ap_sta_is_mld(hapd, sta))
 			own_addr = hapd->mld_addr;
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -918,7 +918,7 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 	} else if (hapd->conf->mld_ap) {
 		sta = ap_get_sta(hapd, dst);
 
-		if (sta && sta->mld_info.mld_sta) {
+		if (ap_sta_is_mld(hapd, sta)) {
 			own_addr = hapd->mld_addr;
 			bssid = own_addr;
 		}
@@ -1095,6 +1095,12 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 
 	os_memset(&params, 0, sizeof(params));
 	params.hw_mode = hapd->iface->conf->hw_mode;
+	params.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
+	    !hapd->conf->disable_11be)
+		params.link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 
 	/*
 	 * If no chanlist config parameter is provided, include all enabled
