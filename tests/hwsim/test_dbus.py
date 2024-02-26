@@ -6400,3 +6400,70 @@ def test_dbus_anqp_query_done(dev, apdev):
     with TestDbusANQPGet(bus) as t:
         if not t.success():
             raise Exception("Expected signals not seen")
+
+def test_dbus_bss_anqp_properties(dev, apdev):
+    "D-Bus ANQP BSS properties changed"
+
+    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    venue_group = 1
+    venue_type = 13
+    lang1 = "eng"
+    name1 = "Example venue"
+    lang2 = "fin"
+    name2 = "Esimerkkipaikka"
+
+    bssid = apdev[0]['bssid']
+    params = {"ssid": "test-anqp", "hessid": bssid, "wpa": "2",
+              "rsn_pairwise": "CCMP", "wpa_key_mgmt": "WPA-EAP",
+              "ieee80211w": "1", "ieee8021x": "1",
+              "auth_server_addr": "127.0.0.1", "auth_server_port": "1812",
+              "auth_server_shared_secret": "radius",
+              "interworking": "1",
+              "venue_group": str(venue_group),
+              "venue_type": str(venue_type),
+              "venue_name": [lang1 + ":" + name1, lang2 + ":" + name2],
+              "roaming_consortium": ["112233", "1020304050", "010203040506", "fedcba"],
+              "domain_name": "example.com,another.example.com",
+              "nai_realm": ["0,example.com,13[5:6],21[2:4][5:7]", "0,another.example.com"]}
+
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    class TestDbusANQPBSSPropertiesChanged(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.capability_list = False
+            self.venue_name = False
+            self.roaming_consortium = False
+            self.nai_realm = False
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_query)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.propertiesChanged, WPAS_DBUS_BSS,
+                            "PropertiesChanged")
+            self.loop.run()
+            return self
+
+        def propertiesChanged(self, properties):
+            logger.debug("propertiesChanged: %s" % str(properties))
+            if 'ANQP' in properties:
+                anqp_properties = properties['ANQP']
+                self.capability_list = 'CapabilityList' in anqp_properties
+                self.venue_name = 'VenueName' in anqp_properties
+                self.roaming_consortium = 'RoamingConsortium' in anqp_properties
+                self.nai_realm = 'NAIRealm' in anqp_properties
+
+        def run_query(self, *args):
+            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+            iface.ANQPGet({"addr": bssid,
+                           "ids": dbus.Array([257,258,261,263], dbus.Signature("q"))})
+            return False
+
+        def success(self):
+            return self.capability_list and self.venue_name and self.roaming_consortium and self.nai_realm
+
+    with TestDbusANQPBSSPropertiesChanged(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
