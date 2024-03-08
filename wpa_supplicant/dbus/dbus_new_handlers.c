@@ -4194,6 +4194,33 @@ dbus_bool_t wpas_dbus_getter_current_bss(
 						&bss_obj_path, error);
 }
 
+/**
+ * wpas_dbus_getter_auth_bss - Get auth bss object path
+ * @iter: Pointer to incoming dbus message iter
+ * @error: Location to store error on failure
+ * @user_data: Function specific data
+ * Returns: TRUE on success, FALSE on failure
+ *
+ * Getter for "AuthBSS" property.
+ */
+dbus_bool_t wpas_dbus_getter_auth_bss(
+	const struct wpa_dbus_property_desc *property_desc,
+	DBusMessageIter *iter, DBusError *error, void *user_data)
+{
+	struct wpa_supplicant *wpa_s = user_data;
+	char path_buf[WPAS_DBUS_OBJECT_PATH_MAX], *bss_obj_path = path_buf;
+
+	if (wpa_s->auth_bss && wpa_s->dbus_new_path)
+		os_snprintf(bss_obj_path, WPAS_DBUS_OBJECT_PATH_MAX,
+			    "%s/" WPAS_DBUS_NEW_BSSIDS_PART "/%u",
+			    wpa_s->dbus_new_path, wpa_s->auth_bss->id);
+	else
+		os_snprintf(bss_obj_path, WPAS_DBUS_OBJECT_PATH_MAX, "/");
+
+	return wpas_dbus_simple_property_getter(iter, DBUS_TYPE_OBJECT_PATH,
+						&bss_obj_path, error);
+}
+
 
 /**
  * wpas_dbus_getter_current_network - Get current network object path

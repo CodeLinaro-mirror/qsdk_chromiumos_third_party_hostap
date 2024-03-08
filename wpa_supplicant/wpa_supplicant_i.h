@@ -725,6 +725,7 @@ struct wpa_supplicant {
 			   * before this has been cleared */
 	struct wpa_ssid *current_ssid;
 	struct wpa_ssid *last_ssid;
+	struct wpa_bss *auth_bss;
 	struct wpa_bss *current_bss;
 	int ap_ies_from_associnfo;
 	unsigned int assoc_freq;

@@ -1176,6 +1176,11 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->wpa_state != old_state) {
 		wpas_notify_state_changed(wpa_s, wpa_s->wpa_state, old_state);
+		if (wpa_s->auth_bss && (wpa_s->wpa_state == WPA_DISCONNECTED ||
+		    wpa_s->wpa_state == WPA_ASSOCIATED)) {
+			wpa_s->auth_bss = NULL;
+			wpas_notify_auth_bssid_changed(wpa_s);
+		}
 
 		/*
 		 * Notify the P2P Device interface about a state change in one
@@ -4384,6 +4389,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	wpa_s->current_ssid = ssid;
 
 	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATING);
+	wpa_s->auth_bss = bss;
+	wpas_notify_auth_bssid_changed(wpa_s);
 	if (bss) {
 		params.ssid = bss->ssid;
 		params.ssid_len = bss->ssid_len;

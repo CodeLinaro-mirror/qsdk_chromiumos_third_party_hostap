@@ -190,6 +190,7 @@ DECLARE_ACCESSOR(wpas_dbus_getter_bridge_ifname);
 DECLARE_ACCESSOR(wpas_dbus_setter_bridge_ifname);
 DECLARE_ACCESSOR(wpas_dbus_getter_config_file);
 DECLARE_ACCESSOR(wpas_dbus_getter_current_bss);
+DECLARE_ACCESSOR(wpas_dbus_getter_auth_bss);
 DECLARE_ACCESSOR(wpas_dbus_getter_current_network);
 DECLARE_ACCESSOR(wpas_dbus_getter_current_auth_mode);
 DECLARE_ACCESSOR(wpas_dbus_getter_bsss);

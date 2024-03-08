@@ -1161,6 +1161,8 @@ no_fils:
 	eapol_sm_notify_portValid(wpa_s->eapol, false);
 	wpa_clear_keys(wpa_s, bss->bssid);
 	wpa_supplicant_set_state(wpa_s, WPA_AUTHENTICATING);
+	wpa_s->auth_bss = bss;
+	wpas_notify_auth_bssid_changed(wpa_s);
 	if (old_ssid != wpa_s->current_ssid)
 		wpas_notify_network_changed(wpa_s);
 

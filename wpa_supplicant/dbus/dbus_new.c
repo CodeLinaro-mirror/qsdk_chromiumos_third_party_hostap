@@ -2363,6 +2363,9 @@ void wpas_dbus_signal_prop_changed(struct wpa_supplicant *wpa_s,
 	case WPAS_DBUS_PROP_STATE:
 		prop = "State";
 		break;
+	case WPAS_DBUS_PROP_AUTH_BSS:
+		prop = "AuthBSS";
+		break;
 	case WPAS_DBUS_PROP_CURRENT_BSS:
 		prop = "CurrentBSS";
 		break;
@@ -3832,6 +3835,11 @@ static const struct wpa_dbus_property_desc wpas_dbus_interface_properties[] = {
 	},
 	{ "CurrentBSS", WPAS_DBUS_NEW_IFACE_INTERFACE, "o",
 	  wpas_dbus_getter_current_bss,
+	  NULL,
+	  NULL
+	},
+	{ "AuthBSS", WPAS_DBUS_NEW_IFACE_INTERFACE, "o",
+	  wpas_dbus_getter_auth_bss,
 	  NULL,
 	  NULL
 	},
