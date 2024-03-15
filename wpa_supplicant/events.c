@@ -1169,19 +1169,18 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 
 
 static bool wpas_valid_ml_bss(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
-
 {
 	u16 removed_links;
 
 	if (wpa_bss_parse_basic_ml_element(wpa_s, bss, NULL, NULL, NULL, NULL))
 		return true;
 
-	if (bss->n_mld_links == 0)
+	if (!bss->valid_links)
 		return true;
 
 	/* Check if the current BSS is going to be removed */
 	removed_links = wpa_bss_parse_reconf_ml_element(wpa_s, bss);
-	if (BIT(bss->mld_links[0].link_id) & removed_links)
+	if (BIT(bss->mld_link_id) & removed_links)
 		return false;
 
 	return true;
@@ -1707,13 +1706,11 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		return NULL;
 	}
 
-#ifdef CONFIG_WNM
 	if (wnm_is_bss_excluded(wpa_s, bss)) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - BSSID excluded");
 		return NULL;
 	}
-#endif /* CONFIG_WNM */
 
 	for (ssid = group; ssid; ssid = only_first_ssid ? NULL : ssid->pnext) {
 		if (wpa_scan_res_ok(wpa_s, ssid, match_ssid, match_ssid_len,
@@ -1819,10 +1816,12 @@ struct wpa_bss * wpa_supplicant_pick_network(struct wpa_supplicant *wpa_s,
 				break;
 		}
 
-		if (selected == NULL && wpa_s->bssid_ignore &&
+		if (!selected &&
+		    (wpa_s->bssid_ignore || wnm_active_bss_trans_mgmt(wpa_s)) &&
 		    !wpa_s->countermeasures) {
 			wpa_dbg(wpa_s, MSG_DEBUG,
 				"No APs found - clear BSSID ignore list and try again");
+			wnm_btm_reset(wpa_s);
 			wpa_bssid_ignore_clear(wpa_s);
 			wpa_s->bssid_ignore_cleared = true;
 		} else if (selected == NULL)
@@ -2715,7 +2714,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 		return 0;
 	}
 
-	if (wnm_scan_process(wpa_s, 1) > 0)
+	if (wnm_scan_process(wpa_s, false) > 0)
 		goto scan_work_done;
 
 	if (sme_proc_obss_scan(wpa_s) > 0)
@@ -4204,10 +4203,7 @@ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
 		if (!mlo.valid_links)
 			return 0;
 
-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
-			if (!(mlo.valid_links & BIT(i)))
-				continue;
-
+		for_each_link(mlo.valid_links, i) {
 			if (!ether_addr_equal(wpa_s->links[i].addr,
 					      mlo.links[i].addr) ||
 			    !ether_addr_equal(wpa_s->links[i].bssid,
@@ -4225,10 +4221,7 @@ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
 	wpa_s->valid_links = mlo.valid_links;
 	wpa_s->mlo_assoc_link_id = mlo.assoc_link_id;
 	os_memcpy(wpa_s->ap_mld_addr, mlo.ap_mld_addr, ETH_ALEN);
-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
-		if (!(wpa_s->valid_links & BIT(i)))
-			continue;
-
+	for_each_link(wpa_s->valid_links, i) {
 		os_memcpy(wpa_s->links[i].addr, mlo.links[i].addr, ETH_ALEN);
 		os_memcpy(wpa_s->links[i].bssid, mlo.links[i].bssid, ETH_ALEN);
 		wpa_s->links[i].freq = mlo.links[i].freq;
@@ -4261,11 +4254,8 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
 	wpa_mlo.valid_links = drv_mlo.valid_links;
 	wpa_mlo.req_links = drv_mlo.req_links;
 
-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+	for_each_link(drv_mlo.req_links, i) {
 		struct wpa_bss *bss;
-
-		if (!(drv_mlo.req_links & BIT(i)))
-			continue;
 
 		bss = wpa_supplicant_get_new_bss(wpa_s, drv_mlo.links[i].bssid);
 		if (!bss) {
@@ -6090,12 +6080,9 @@ static void wpas_tid_link_map(struct wpa_supplicant *wpa_s,
 	pos += res;
 
 	if (!info->default_map) {
-		for (i = 0; i < MAX_NUM_MLD_LINKS && end > pos; i++) {
+		for_each_link(info->valid_links, i) {
 			char uplink_map_str[9];
 			char downlink_map_str[9];
-
-			if (!(info->valid_links & BIT(i)))
-				continue;
 
 			bitmap_to_str(info->t2lmap[i].uplink, uplink_map_str);
 			bitmap_to_str(info->t2lmap[i].downlink,
@@ -6374,6 +6361,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			" type=%d stype=%d",
 			MAC2STR(data->tx_status.dst),
 			data->tx_status.type, data->tx_status.stype);
+#ifdef CONFIG_WNM
+		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
+		    data->tx_status.stype == WLAN_FC_STYPE_ACTION &&
+		    wnm_btm_resp_tx_status(wpa_s, data->tx_status.data,
+					   data->tx_status.data_len) == 0)
+			break;
+#endif /* CONFIG_WNM */
 #ifdef CONFIG_PASN
 		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
 		    data->tx_status.stype == WLAN_FC_STYPE_AUTH &&

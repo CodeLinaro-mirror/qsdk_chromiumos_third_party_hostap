@@ -43,6 +43,7 @@
 
 #define HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL 0x00000800
 #define HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL 0x00001000
+#define HOSTAPD_CHAN_EHT_320MHZ_SUBCHANNEL 0x00002000
 
 #define HOSTAPD_CHAN_INDOOR_ONLY 0x00010000
 #define HOSTAPD_CHAN_GO_CONCURRENT 0x00020000
@@ -246,6 +247,11 @@ struct hostapd_hw_modes {
 	 * mode - Hardware mode
 	 */
 	enum hostapd_hw_mode mode;
+
+	/**
+	 * is_6ghz - Whether the mode information is for the 6 GHz band
+	 */
+	bool is_6ghz;
 
 	/**
 	 * num_channels - Number of entries in the channels array
@@ -4545,13 +4551,14 @@ struct wpa_driver_ops {
 	/**
 	 * stop_ap - Removes beacon from AP
 	 * @priv: Private driver interface data
+	 * @link_id: Link ID of the specified link; -1 for non-MLD
 	 * Returns: 0 on success, -1 on failure (or if not supported)
 	 *
 	 * This optional function can be used to disable AP mode related
 	 * configuration. Unlike deinit_ap, it does not change to station
 	 * mode.
 	 */
-	int (*stop_ap)(void *priv);
+	int (*stop_ap)(void *priv, int link_id);
 
 	/**
 	 * get_survey - Retrieve survey data

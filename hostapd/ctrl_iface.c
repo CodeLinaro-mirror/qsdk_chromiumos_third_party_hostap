@@ -1309,6 +1309,8 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 			hostapd_disassoc_deny_mac(hapd);
 		} else if (os_strcasecmp(cmd, "accept_mac_file") == 0) {
 			hostapd_disassoc_accept_mac(hapd);
+		} else if (os_strcasecmp(cmd, "ssid") == 0) {
+			hostapd_neighbor_sync_own_report(hapd);
 		} else if (os_strncmp(cmd, "wme_ac_", 7) == 0 ||
 			   os_strncmp(cmd, "wmm_ac_", 7) == 0) {
 			hapd->parameter_set_count++;
@@ -2638,6 +2640,8 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 	unsigned int i;
 	int bandwidth;
 	u8 chan;
+	unsigned int num_err = 0;
+	int err = 0;
 
 	ret = hostapd_parse_csa_settings(pos, &settings);
 	if (ret)
@@ -2721,15 +2725,14 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 		hostapd_chan_switch_config(iface->bss[i],
 					   &settings.freq_params);
 
-		ret = hostapd_switch_channel(iface->bss[i], &settings);
-		if (ret) {
-			/* FIX: What do we do if CSA fails in the middle of
-			 * submitting multi-BSS CSA requests? */
-			return ret;
+		err = hostapd_switch_channel(iface->bss[i], &settings);
+		if (err) {
+			ret = err;
+			num_err++;
 		}
 	}
 
-	return 0;
+	return (iface->num_bss == num_err) ? ret : 0;
 #else /* NEED_AP_MLME */
 	return -1;
 #endif /* NEED_AP_MLME */
@@ -5358,7 +5361,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
 			reply_len = -1;
 	} else if (os_strncmp(buf, "INTERFACES", 10) == 0) {
 		reply_len = hostapd_global_ctrl_iface_interfaces(
-			interfaces, buf + 10, reply, sizeof(buffer));
+			interfaces, buf + 10, reply, reply_size);
 	} else if (os_strcmp(buf, "TERMINATE") == 0) {
 		eloop_terminate();
 	} else {

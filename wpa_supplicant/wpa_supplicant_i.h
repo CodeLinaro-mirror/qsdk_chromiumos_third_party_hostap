@@ -1157,6 +1157,7 @@ struct wpa_supplicant {
 	unsigned int user_initiated_pd:1;
 	unsigned int p2p_go_group_formation_completed:1;
 	unsigned int group_formation_reported:1;
+	unsigned int p2p_go_no_pri_sec_switch:1;
 	unsigned int waiting_presence_resp;
 	int p2p_first_connection_timeout;
 	unsigned int p2p_nfc_tag_enabled:1;
@@ -1305,14 +1306,14 @@ struct wpa_supplicant {
 	u8 wnm_num_neighbor_report;
 	u8 wnm_mode;
 	bool wnm_link_removal;
+	u8 wnm_dissoc_addr[ETH_ALEN];
 	u16 wnm_dissoc_timer;
 	u8 wnm_bss_termination_duration[12];
 	struct neighbor_report *wnm_neighbor_report_elements;
 	struct os_reltime wnm_cand_valid_until;
-	u8 wnm_cand_from_bss[ETH_ALEN];
+	struct wpa_bss *wnm_target_bss;
 	enum bss_trans_mgmt_status_code bss_tm_status;
 	bool bss_trans_mgmt_in_progress;
-	struct wpabuf *coloc_intf_elems;
 	u8 coloc_intf_dialog_token;
 	u8 coloc_intf_auto_report;
 	u8 coloc_intf_timeout;
@@ -1474,6 +1475,9 @@ struct wpa_supplicant {
 	int dpp_netrole;
 	int dpp_auth_ok_on_ack;
 	int dpp_in_response_listen;
+	bool dpp_tx_auth_resp_on_roc_stop;
+	bool dpp_tx_chan_change;
+	bool dpp_listen_on_tx_expire;
 	int dpp_gas_client;
 	int dpp_gas_server;
 	int dpp_gas_dialog_token;

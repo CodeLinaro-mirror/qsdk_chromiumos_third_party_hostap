@@ -3932,9 +3932,10 @@ static int openssl_evp_pkey_ec_prime_len(struct crypto_ec_key *key)
 	group = EC_GROUP_new_by_curve_name(nid);
 	prime = BN_new();
 	if (!group || !prime)
-		return -1;
+		goto fail;
 	if (EC_GROUP_get_curve(group, prime, NULL, NULL, NULL) == 1)
 		prime_len = BN_num_bytes(prime);
+fail:
 	EC_GROUP_free(group);
 	BN_free(prime);
 	return prime_len;
@@ -4880,7 +4881,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 	hmac = EVP_MAC_fetch(NULL, "HMAC", NULL);
 	if (!hmac)
-		return -1;
+		goto fail;
 
 	params[0] = OSSL_PARAM_construct_utf8_string(
 		"digest",
@@ -4889,7 +4890,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
 #else /* OpenSSL version >= 3.0 */
 	hctx = HMAC_CTX_new();
 	if (!hctx)
-		return -1;
+		goto fail;
 #endif /* OpenSSL version >= 3.0 */
 
 	while (left > 0) {
@@ -4898,7 +4899,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
 		EVP_MAC_CTX_free(hctx);
 		hctx = EVP_MAC_CTX_new(hmac);
 		if (!hctx)
-			return -1;
+			goto fail;
 
 		if (EVP_MAC_init(hctx, prk, mdlen, params) != 1)
 			goto fail;

@@ -293,7 +293,8 @@ struct hostapd_data {
 	void *wps_event_cb_ctx;
 
 	void (*sta_authorized_cb)(void *ctx, const u8 *mac_addr,
-				  int authorized, const u8 *p2p_dev_addr);
+				  int authorized, const u8 *p2p_dev_addr,
+				  const u8 *ip);
 	void *sta_authorized_cb_ctx;
 
 	void (*setup_complete_cb)(void *ctx);
@@ -799,5 +800,7 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
 #define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
 	if (false)
 #endif /* CONFIG_IEEE80211BE */
+
+u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd);
 
 #endif /* HOSTAPD_H */

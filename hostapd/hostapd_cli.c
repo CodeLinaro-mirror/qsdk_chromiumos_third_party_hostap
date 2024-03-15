@@ -1215,14 +1215,14 @@ static int hostapd_cli_cmd_notify_cw_change(struct wpa_ctrl *ctrl,
 
 
 static int hostapd_cli_cmd_enable(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+				  char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "ENABLE");
 }
 
 
 static int hostapd_cli_cmd_reload(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+				  char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "RELOAD");
 }
@@ -1243,7 +1243,7 @@ static int hostapd_cli_cmd_reload_config(struct wpa_ctrl *ctrl, int argc,
 
 
 static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+				   char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DISABLE");
 }
@@ -1257,16 +1257,23 @@ static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
 
 
 static int hostapd_cli_cmd_disable_mld(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+				       char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DISABLE_MLD");
 }
 
 
 static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+					 char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "UPDATE_BEACON");
+}
+
+
+static int hostapd_cli_cmd_stop_ap(struct wpa_ctrl *ctrl, int argc,
+				   char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "STOP_AP");
 }
 
 
@@ -1759,6 +1766,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "= disable AP MLD to which the interface is affiliated" },
 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
 	  "= update Beacon frame contents\n"},
+	{ "stop_ap", hostapd_cli_cmd_stop_ap, NULL,
+	  "= stop AP\n"},
 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,
 	  "= drop all ERP keys"},
 	{ "log_level", hostapd_cli_cmd_log_level, NULL,

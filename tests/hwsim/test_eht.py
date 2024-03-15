@@ -4,6 +4,7 @@
 # This software may be distributed under the terms of the BSD license.
 # See README for more details.
 
+import binascii
 import hostapd
 from utils import *
 from hwsim import HWSimRadio
@@ -73,6 +74,8 @@ def eht_verify_status(wpas, hapd, freq, bw, is_ht=False, is_vht=False,
 
     sta = hapd.get_sta(wpas.own_addr())
     logger.info("hostapd STA: " + str(sta))
+    if sta['addr'] == 'FAIL':
+        raise Exception("hostapd " + hapd.ifname + " did not have a STA entry for the STA " + wpas.own_addr())
     if is_ht and "[HT]" not in sta['flags']:
         raise Exception("Missing STA flag: HT")
     if is_vht and "[VHT]" not in sta['flags']:
@@ -592,6 +595,14 @@ def test_eht_mld_sae_legacy_client(dev, apdev):
             dev[0].set("sae_pwe", "1")
             dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
                            key_mgmt="SAE", ieee80211w="2", beacon_prot="1")
+            logger.info("wpa_supplicant STATUS:\n" + dev[0].request("STATUS"))
+            bssid = dev[0].get_status_field("bssid")
+            if hapd0.own_addr() == bssid:
+                hapd0.wait_sta();
+            elif hapd1.own_addr() == bssid:
+                hapd1.wait_sta();
+            else:
+                raise Exception("Unknown BSSID: " + bssid)
 
             eht_verify_status(dev[0], hapd0, 2412, 20, is_ht=True)
             traffic_test(dev[0], hapd0)
@@ -1164,7 +1175,13 @@ def _5ghz_chanwidth_to_bw(op):
     }.get(op, "20")
 
 def _test_eht_5ghz(dev, apdev, channel, chanwidth, ccfs1, ccfs2=0,
-                   eht_oper_puncturing_override=None):
+                   eht_oper_puncturing_override=None,
+                   he_ccfs1=None, he_oper_chanwidth=None):
+    if he_ccfs1 is None:
+        he_ccfs1 = ccfs1
+    if he_oper_chanwidth is None:
+        he_oper_chanwidth = chanwidth
+
     try:
         params = {"ssid": "eht",
                   "country_code": "US",
@@ -1174,33 +1191,32 @@ def _test_eht_5ghz(dev, apdev, channel, chanwidth, ccfs1, ccfs2=0,
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
                   "ieee80211be": "1",
-                  "vht_oper_chwidth": str(chanwidth),
-                  "vht_oper_centr_freq_seg0_idx": str(ccfs1),
+                  "vht_oper_chwidth": str(he_oper_chanwidth),
+                  "vht_oper_centr_freq_seg0_idx": str(he_ccfs1),
                   "vht_oper_centr_freq_seg1_idx": str(ccfs2),
-                  "he_oper_chwidth": str(chanwidth),
+                  "he_oper_chwidth": str(he_oper_chanwidth),
+                  "he_oper_centr_freq_seg0_idx": str(he_ccfs1),
                   "he_oper_centr_freq_seg1_idx": str(ccfs2),
-                  "he_oper_centr_freq_seg0_idx": str(ccfs1),
                   "eht_oper_centr_freq_seg0_idx": str(ccfs1),
                   "eht_oper_chwidth": str(chanwidth)}
 
-        if chanwidth == 0:
-            if channel == ccfs1:
-                  bw = "20"
-            elif channel < ccfs1:
+        if he_oper_chanwidth == 0:
+            if channel < he_ccfs1:
                   params["ht_capab"] = "[HT40+]"
-            else:
+            elif channel > he_ccfs1:
                   params["ht_capab"] = "[HT40-]"
         else:
-                  params["ht_capab"] = "[HT40+]"
-                  if chanwidth == 2:
-                      params["vht_capab"] = "[VHT160]"
-                  elif chanwidth == 3:
-                      params["vht_capab"] = "[VHT160-80PLUS80]"
+            params["ht_capab"] = "[HT40+]"
+            if he_oper_chanwidth == 2:
+                params["vht_capab"] = "[VHT160]"
+            elif he_oper_chanwidth == 3:
+                params["vht_capab"] = "[VHT160-80PLUS80]"
 
         if eht_oper_puncturing_override:
             params['eht_oper_puncturing_override'] = eht_oper_puncturing_override
 
         freq = 5000 + channel * 5
+        bw = "20"
         if chanwidth != 0 or channel != ccfs1:
             bw = _5ghz_chanwidth_to_bw(chanwidth)
 
@@ -1247,21 +1263,24 @@ def test_eht_5ghz_80mhz_puncturing_override_1(dev, apdev):
 
     # The 2nd 20 MHz is punctured
     _test_eht_5ghz(dev, apdev, 36, 1, 42, 0,
-                   eht_oper_puncturing_override="0x0002")
+                   eht_oper_puncturing_override="0x0002",
+                   he_ccfs1=36, he_oper_chanwidth=0)
 
 def test_eht_5ghz_80mhz_puncturing_override_2(dev, apdev):
     """EHT with 80 MHz channel width on 5 GHz - primary=149 - puncturing override (3rd)"""
 
     # The 3rd 20 MHz is punctured
     _test_eht_5ghz(dev, apdev, 149, 1, 155, 0,
-                   eht_oper_puncturing_override="0x0004")
+                   eht_oper_puncturing_override="0x0004",
+                   he_ccfs1=151, he_oper_chanwidth=0)
 
 def test_eht_5ghz_80mhz_puncturing_override_3(dev, apdev):
     """EHT with 80 MHz channel width on 5 GHz - primary=149 - puncturing override (4th)"""
 
     # The 4th 20 MHz is punctured
     _test_eht_5ghz(dev, apdev, 149, 1, 155, 0,
-                   eht_oper_puncturing_override="0x0008")
+                   eht_oper_puncturing_override="0x0008",
+                   he_ccfs1=151, he_oper_chanwidth=0)
 
 def test_eht_5ghz_80p80mhz(dev, apdev):
     """EHT with 80+80 MHz channel width on 5 GHz"""
@@ -1319,6 +1338,12 @@ def _test_eht_6ghz(dev, apdev, channel, op_class, ccfs1):
 
         eht_verify_status(dev[0], hapd, freq, bw)
         eht_verify_wifi_version(dev[0])
+        sta = hapd.get_sta(dev[0].own_addr())
+        if 'supp_op_classes' not in sta:
+            raise Exception("supp_op_classes not indicated")
+        supp_op_classes = binascii.unhexlify(sta['supp_op_classes'])
+        if op_class not in supp_op_classes:
+            raise Exception("STA did not indicate support for opclass %d" % op_class)
         hwsim_utils.test_connectivity(dev[0], hapd)
         dev[0].request("DISCONNECT")
         dev[0].wait_disconnected()
@@ -1722,3 +1747,78 @@ def test_eht_mld_and_mlds(dev, apdev):
         logger.info("Assigned AIDs: " + str(aid))
         if len(set(aid)) != 2:
             raise Exception("AP MLD did not assign unique AID to each non-AP MLD")
+
+def mlo_perform_csa(hapd, command, freq, dev):
+        match_str = "freq=" + str(freq)
+        hapd.request(command)
+
+        ev = hapd.wait_event(["CTRL-EVENT-STARTED-CHANNEL-SWITCH"], timeout=10)
+        if ev is None:
+            raise Exception("Channel switch start event not seen")
+        if match_str not in ev:
+            raise Exception("Unexpected channel in CS started")
+
+        ev = hapd.wait_event(["CTRL-EVENT-CHANNEL-SWITCH"], timeout=10)
+        if ev is None:
+            raise Exception("Channel switch completion event not seen")
+        if match_str not in ev:
+            raise Exception("Unexpected channel in CS completed")
+
+        ev = hapd.wait_event(["AP-CSA-FINISHED"], timeout=10)
+        if ev is None:
+            raise Exception("CSA finished event timed out")
+        if match_str not in ev:
+            raise Exception("Unexpected channel in CSA finished event")
+
+        ev = dev.wait_event(["CTRL-EVENT-LINK-CHANNEL-SWITCH"], timeout=10)
+        if ev is None:
+            raise Exception("Non-AP MLD did not report CS")
+        if match_str not in ev:
+            raise Exception("Unexpected channel in CS event from non-AP MLD")
+
+        time.sleep(0.5)
+
+def test_eht_mlo_csa(dev, apdev):
+        """EHT MLD AP connected to non-AP MLD. Seamless channel switch"""
+        csa_supported(dev[0])
+
+        with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
+            HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+
+            wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+            wpas.interface_add(wpas_iface)
+
+            ssid = "mld_ap"
+            passphrase = 'qwertyuiop'
+
+            params = eht_mld_ap_wpa2_params(ssid, passphrase,
+                                            key_mgmt="SAE", mfp="2", pwe='1')
+            hapd0 = eht_mld_enable_ap(hapd_iface, params)
+
+            params['channel'] = '6'
+            hapd1 = eht_mld_enable_ap(hapd_iface, params)
+
+            wpas.set("sae_pwe", "1")
+            wpas.connect(ssid, sae_password=passphrase, scan_freq="2412 2437",
+                         key_mgmt="SAE", ieee80211w="2")
+
+            eht_verify_status(wpas, hapd0, 2412, 20, is_ht=True, mld=True,
+                              valid_links=3, active_links=3)
+            eht_verify_wifi_version(wpas)
+            traffic_test(wpas, hapd0)
+
+            logger.info("Perform CSA on 1st link")
+            mlo_perform_csa(hapd0, "CHAN_SWITCH 5 2462 ht he eht blocktx",
+                            2462, wpas)
+
+            logger.info("Test traffic after 1st link CSA completes")
+            traffic_test(wpas, hapd0)
+
+            logger.info("Perform CSA on 1st link and bring it back to original channel")
+            mlo_perform_csa(hapd0, "CHAN_SWITCH 5 2412 ht he eht blocktx",
+                            2412, wpas)
+
+            logger.info("Test traffic again after 1st link CSA completes")
+            traffic_test(wpas, hapd0)
+
+            #TODO: CSA on non-first link

@@ -1100,6 +1100,8 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 
 	os_memset(wpa_s->go_dev_addr, 0, ETH_ALEN);
 
+	wpa_s->p2p_go_no_pri_sec_switch = 0;
+
 	return 0;
 }
 
@@ -6896,6 +6898,7 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
 		       bool allow_6ghz)
 {
 	struct p2p_go_neg_results params;
+	int selected_freq = 0;
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return -1;
@@ -6910,12 +6913,13 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
 	wpas_p2p_stop_find_oper(wpa_s);
 
 	if (!wpa_s->p2p_go_do_acs) {
-		freq = wpas_p2p_select_go_freq(wpa_s, freq);
-		if (freq < 0)
+		selected_freq = wpas_p2p_select_go_freq(wpa_s, freq);
+		if (selected_freq < 0)
 			return -1;
 	}
 
-	if (wpas_p2p_init_go_params(wpa_s, &params, freq, vht_center_freq2,
+	if (wpas_p2p_init_go_params(wpa_s, &params, selected_freq,
+				    vht_center_freq2,
 				    ht40, vht, max_oper_chwidth, he, edmg,
 				    NULL))
 		return -1;
@@ -6926,6 +6930,8 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
 	wpa_s = wpas_p2p_get_group_iface(wpa_s, 0, 1);
 	if (wpa_s == NULL)
 		return -1;
+	if (freq > 0)
+		wpa_s->p2p_go_no_pri_sec_switch = 1;
 	wpas_start_wps_go(wpa_s, &params, 0);
 
 	return 0;
@@ -7085,6 +7091,7 @@ int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
 			freq = wpas_p2p_select_go_freq(wpa_s, force_freq);
 			if (freq < 0)
 				return -1;
+			wpa_s->p2p_go_no_pri_sec_switch = 1;
 		} else {
 			freq = wpas_p2p_select_go_freq(wpa_s, neg_freq);
 			if (freq < 0 ||

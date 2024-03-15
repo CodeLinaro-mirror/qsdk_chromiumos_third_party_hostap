@@ -184,6 +184,8 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
 		hostapd_set_generic_elem(hapd, (u8 *) "", 0);
 	}
 
+	hostapd_neighbor_sync_own_report(hapd);
+
 	ieee802_11_set_beacon(hapd);
 	hostapd_update_wps(hapd);
 
@@ -3913,7 +3915,8 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 				    mode ? &mode->he_capab[IEEE80211_MODE_AP] :
 				    NULL,
 				    mode ? &mode->eht_capab[IEEE80211_MODE_AP] :
-				    NULL))
+				    NULL,
+				    hostapd_get_punct_bitmap(hapd)))
 		return -1;
 
 	switch (params->bandwidth) {
@@ -4423,3 +4426,19 @@ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
 	return NULL;
 }
 #endif /* CONFIG_IEEE80211BE */
+
+
+u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd)
+{
+	u16 punct_bitmap = 0;
+
+#ifdef CONFIG_IEEE80211BE
+	punct_bitmap = hapd->iconf->punct_bitmap;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (!punct_bitmap)
+		punct_bitmap = hapd->conf->eht_oper_puncturing_override;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
+
+	return punct_bitmap;
+}
