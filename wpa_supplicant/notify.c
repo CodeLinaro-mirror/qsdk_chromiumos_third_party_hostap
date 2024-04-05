@@ -167,6 +167,14 @@ void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s)
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ROAM_COMPLETE);
 }
 
+void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ);
+}
+
 
 void wpas_notify_session_length(struct wpa_supplicant *wpa_s)
 {
