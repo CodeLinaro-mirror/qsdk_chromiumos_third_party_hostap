@@ -2187,6 +2187,20 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		MAC2STR(selected->bssid), selected->freq, selected->level,
 		selected->snr, selected->est_throughput);
 
+	if (wpa_s->valid_links) {
+		u8 i;
+
+		for_each_link(wpa_s->valid_links, i) {
+			if (ether_addr_equal(wpa_s->links[i].bssid,
+					     selected->bssid)) {
+				wpa_dbg(wpa_s, MSG_DEBUG,
+					"MLD: associated to selected BSS link_id=%u",
+					i);
+				return 0;
+			}
+		}
+	}
+
 	if (wpa_s->current_ssid->bssid_set &&
 	    ether_addr_equal(selected->bssid, wpa_s->current_ssid->bssid)) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Allow reassociation - selected BSS "
