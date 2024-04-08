@@ -508,8 +508,6 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 
 	return 0;
 out:
-	wpa_printf(MSG_DEBUG, "MLD: Authentication - clearing MLD state");
-	wpas_reset_mlo_info(wpa_s);
 	return -1;
 }
 
@@ -2161,6 +2159,9 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 		wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
 		wpa_supplicant_deauthenticate(wpa_s,
 					      WLAN_REASON_DEAUTH_LEAVING);
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Authentication - clearing MLD state");
+		wpas_reset_mlo_info(wpa_s);
 		return;
 	}
 

@@ -4589,9 +4589,16 @@ void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 		reason_code, reason2str(reason_code),
 		wpa_supplicant_state_txt(wpa_s->wpa_state));
 
-	if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
-	    (wpa_s->wpa_state == WPA_AUTHENTICATING ||
-	     wpa_s->wpa_state == WPA_ASSOCIATING))
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"deauthenticate: valid_links=0x%x, ap_mld_addr=" MACSTR,
+		wpa_s->valid_links, MAC2STR(wpa_s->ap_mld_addr));
+
+	if (wpa_s->valid_links &&
+	    !is_zero_ether_addr(wpa_s->ap_mld_addr))
+		addr = wpa_s->ap_mld_addr;
+	else if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
+		 (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+		  wpa_s->wpa_state == WPA_ASSOCIATING))
 		addr = wpa_s->pending_bssid;
 	else if (!is_zero_ether_addr(wpa_s->bssid))
 		addr = wpa_s->bssid;
