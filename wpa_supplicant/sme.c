@@ -2890,7 +2890,7 @@ void sme_event_auth_timed_out(struct wpa_supplicant *wpa_s,
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Authentication timed out");
 	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
-	wpa_supplicant_mark_disassoc(wpa_s);
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 }
 
 
@@ -2899,7 +2899,7 @@ void sme_event_assoc_timed_out(struct wpa_supplicant *wpa_s,
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Association timed out");
 	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
-	wpa_supplicant_mark_disassoc(wpa_s);
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 }
 
 
