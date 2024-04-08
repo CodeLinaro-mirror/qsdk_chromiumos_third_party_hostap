@@ -2391,6 +2391,11 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		MAC2STR(selected->bssid), selected->freq, selected->level,
 		selected->snr, selected->est_throughput);
 
+	if (wpas_ap_link_address(wpa_s, selected->bssid)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "MLD: associated to selected BSS");
+		return 0;
+	}
+
 	if (wpa_s->current_ssid->bssid_set &&
 	    os_memcmp(selected->bssid, wpa_s->current_ssid->bssid, ETH_ALEN) ==
 	    0) {
