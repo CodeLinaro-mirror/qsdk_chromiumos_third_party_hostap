@@ -51,12 +51,12 @@ gdbus call --system --dest fi.w1.wpa_supplicant1 --object-path \
 	...
 ```
 4. Use
-   [hostap_hwsim](https://chromium.googlesource.com/chromiumos/platform/tast-tests/+/HEAD/src/chromiumos/tast/local/bundles/cros/wifi/README.hostap_hwsim.md)
+   [hostap_hwsim](https://chromium.googlesource.com/chromiumos/platform/tast-tests/+/HEAD/src/go.chromium.org/tast-tests/cros/local/bundles/cros/wifi/README.hostap_hwsim.md)
 5. Run matfunc tests
 
 ## Uploading to Gerrit
 
-We try to follow kernel conventions detailed [here](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/kernel_development.md#commit-messages-summary-lines-chromium_upstream_fromlist_backport
+We try to follow kernel conventions detailed [here](https://www.chromium.org/chromium-os/developer-library/guides/kernel/kernel-development/#commit-messages-summary-lines-chromium-upstream-fromlist-backport
 ).
 For trivial changes, feel free to send them upstream without internal review
 (see below for more details). Otherwise, upload them with a **WIP:** prefix to
@@ -93,7 +93,7 @@ For convenience, we suggest subscribing to the
 that your patches will be automatically posted to the list without approval.
 Note that DMARC restrictions may prevent subscribing to the mailing list with
 your @google.com email. Sending changes upstream is fairly similar to the
-[kernel process](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/kernel_development.md#how-do-i-send-a-patch-upstream).
+[kernel process](https://www.chromium.org/chromium-os/developer-library/guides/kernel/kernel-development/#how-do-i-send-a-patch-upstream).
 Follow those instructions to set up your git configuration and for best
 practices with respect to patch titling and formatting. Note that our
 wpa_supplicant repository already contains an `upstream/main` branch that you
