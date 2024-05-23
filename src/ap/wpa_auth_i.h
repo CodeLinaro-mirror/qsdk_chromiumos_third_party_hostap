@@ -136,7 +136,7 @@ struct wpa_state_machine {
 	size_t r0kh_id_len;
 	u8 *assoc_resp_ftie;
 
-	void (*ft_pending_cb)(void *ctx, const u8 *dst, const u8 *bssid,
+	void (*ft_pending_cb)(void *ctx, const u8 *dst,
 			      u16 auth_transaction, u16 status,
 			      const u8 *ies, size_t ies_len);
 	void *ft_pending_cb_ctx;
@@ -172,7 +172,6 @@ struct wpa_state_machine {
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_IEEE80211BE
-	u8 own_mld_addr[ETH_ALEN];
 	u8 peer_mld_addr[ETH_ALEN];
 	s8 mld_assoc_link_id;
 	u8 n_mld_affiliated_links;
@@ -180,12 +179,8 @@ struct wpa_state_machine {
 	struct mld_link {
 		bool valid;
 		u8 peer_addr[ETH_ALEN];
-		u8 own_addr[ETH_ALEN];
 
-		const u8 *rsne;
-		size_t rsne_len;
-		const u8 *rsnxe;
-		size_t rsnxe_len;
+		struct wpa_authenticator *wpa_auth;
 	} mld_links[MAX_NUM_MLD_LINKS];
 #endif /* CONFIG_IEEE80211BE */
 };
@@ -262,6 +257,13 @@ struct wpa_authenticator {
 #ifdef CONFIG_P2P
 	struct bitfield *ip_pool;
 #endif /* CONFIG_P2P */
+
+#ifdef CONFIG_IEEE80211BE
+	bool is_ml;
+	u8 mld_addr[ETH_ALEN];
+	u8 link_id;
+	bool primary_auth;
+#endif /* CONFIG_IEEE80211BE */
 };
 
 

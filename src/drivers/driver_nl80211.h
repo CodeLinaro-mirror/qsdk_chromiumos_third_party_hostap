@@ -58,6 +58,7 @@ struct i802_link {
 	int freq;
 	int bandwidth;
 	u8 addr[ETH_ALEN];
+	void *ctx;
 };
 
 struct i802_bss {
@@ -401,7 +402,8 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
 int wpa_driver_nl80211_sched_scan(void *priv,
 				  struct wpa_driver_scan_params *params);
 int wpa_driver_nl80211_stop_sched_scan(void *priv);
-struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv);
+struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv,
+							      const u8 *bssid);
 void nl80211_dump_scan(struct wpa_driver_nl80211_data *drv);
 int wpa_driver_nl80211_abort_scan(void *priv, u64 scan_cookie);
 int wpa_driver_nl80211_vendor_scan(struct i802_bss *bss,

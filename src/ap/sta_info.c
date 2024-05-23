@@ -180,12 +180,47 @@ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta)
 		sta->pasn->fils.erp_resp = NULL;
 #endif /* CONFIG_FILS */
 
-		bin_clear_free(sta->pasn, sizeof(*sta->pasn));
+		pasn_data_deinit(sta->pasn);
 		sta->pasn = NULL;
 	}
 }
 
 #endif /* CONFIG_PASN */
+
+
+static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+{
+#ifdef CONFIG_IEEE80211BE
+	if (hostapd_sta_is_link_sta(hapd, sta) &&
+	    !hostapd_drv_link_sta_remove(hapd, sta->addr))
+		return;
+#endif /* CONFIG_IEEE80211BE */
+
+	hostapd_drv_sta_remove(hapd, sta->addr);
+}
+
+
+#ifdef CONFIG_IEEE80211BE
+static void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+					       struct sta_info *psta)
+{
+	struct sta_info *lsta;
+	struct hostapd_data *lhapd;
+
+	if (!ap_sta_is_mld(hapd, psta))
+		return;
+
+	for_each_mld_link(lhapd, hapd) {
+		if (lhapd == hapd)
+			continue;
+
+		lsta = ap_get_sta(lhapd, psta->addr);
+		if (lsta)
+			lsta->wpa_sm = NULL;
+	}
+}
+#endif /* CONFIG_IEEE80211BE */
+
 
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 {
@@ -209,7 +244,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 	if (!hapd->iface->driver_ap_teardown &&
 	    !(sta->flags & WLAN_STA_PREAUTH)) {
-		hostapd_drv_sta_remove(hapd, sta->addr);
+		__ap_free_sta(hapd, sta);
 		sta->added_unassoc = 0;
 	}
 
@@ -304,9 +339,17 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 #ifdef CONFIG_IEEE80211BE
 	if (!ap_sta_is_mld(hapd, sta) ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
-#else
+		/* Remove references from partner links. */
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+
+	/* Release group references in case non-association link STA is removed
+	 * before association link STA */
+	if (hostapd_sta_is_link_sta(hapd, sta))
+		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id);
+#else /* CONFIG_IEEE80211BE */
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
 
@@ -452,6 +495,27 @@ void hostapd_free_stas(struct hostapd_data *hapd)
 		ap_free_sta(hapd, prev);
 	}
 }
+
+
+#ifdef CONFIG_IEEE80211BE
+void hostapd_free_link_stas(struct hostapd_data *hapd)
+{
+	struct sta_info *sta, *prev;
+
+	sta = hapd->sta_list;
+	while (sta) {
+		prev = sta;
+		sta = sta->next;
+
+		if (!hostapd_sta_is_link_sta(hapd, prev))
+			continue;
+
+		wpa_printf(MSG_DEBUG, "Removing link station from MLD " MACSTR,
+			   MAC2STR(prev->addr));
+		ap_free_sta(hapd, prev);
+	}
+}
+#endif /* CONFIG_IEEE80211BE */
 
 
 /**
@@ -869,9 +933,11 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
 	ieee802_1x_free_station(hapd, sta);
 #ifdef CONFIG_IEEE80211BE
 	if (!hapd->conf->mld_ap ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
-#else
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+#else /* CONFIG_IEEE80211BE */
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
 
@@ -978,8 +1044,7 @@ static bool ap_sta_ml_disconnect(struct hostapd_data *hapd,
 
 			tmp_hapd = interfaces->iface[i]->bss[0];
 
-			if (!tmp_hapd->conf->mld_ap ||
-			    assoc_hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+			if (!hostapd_is_ml_partner(tmp_hapd, assoc_hapd))
 				continue;
 
 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
@@ -1728,10 +1793,8 @@ static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
 				   struct sta_info *sta)
 {
 	struct hostapd_data *tmp_hapd;
-	unsigned int i, j;
 
-	for_each_mld_link(tmp_hapd, i, j, hapd->iface->interfaces,
-			  hapd->conf->mld_id) {
+	for_each_mld_link(tmp_hapd, hapd) {
 		struct sta_info *tmp_sta;
 
 		if (hapd == tmp_hapd)

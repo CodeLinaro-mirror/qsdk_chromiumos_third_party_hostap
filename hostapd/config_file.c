@@ -1678,6 +1678,8 @@ static int parse_anqp_elem(struct hostapd_bss_config *bss, char *buf, int line)
 	return 0;
 }
 
+#endif /* CONFIG_INTERWORKING */
+
 
 static int parse_qos_map_set(struct hostapd_bss_config *bss,
 			     char *buf, int line)
@@ -1718,8 +1720,6 @@ static int parse_qos_map_set(struct hostapd_bss_config *bss,
 
 	return 0;
 }
-
-#endif /* CONFIG_INTERWORKING */
 
 
 #ifdef CONFIG_HS20
@@ -3664,6 +3664,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 	} else if (os_strcmp(buf, "require_ht") == 0) {
 		conf->require_ht = atoi(pos);
+	} else if (os_strcmp(buf, "ht_vht_twt_responder") == 0) {
+		conf->ht_vht_twt_responder = atoi(pos);
 	} else if (os_strcmp(buf, "obss_interval") == 0) {
 		conf->obss_interval = atoi(pos);
 #ifdef CONFIG_IEEE80211AC
@@ -4258,10 +4260,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->gas_frag_limit = val;
 	} else if (os_strcmp(buf, "gas_comeback_delay") == 0) {
 		bss->gas_comeback_delay = atoi(pos);
+#endif /* CONFIG_INTERWORKING */
 	} else if (os_strcmp(buf, "qos_map_set") == 0) {
 		if (parse_qos_map_set(bss, pos, line) < 0)
 			return 1;
-#endif /* CONFIG_INTERWORKING */
 #ifdef CONFIG_RADIUS_TEST
 	} else if (os_strcmp(buf, "dump_msk_file") == 0) {
 		os_free(bss->dump_msk_file);
@@ -4516,6 +4518,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->eapol_m3_no_encrypt = atoi(pos);
 	} else if (os_strcmp(buf, "test_assoc_comeback_type") == 0) {
 		bss->test_assoc_comeback_type = atoi(pos);
+	} else if (os_strcmp(buf, "presp_elements") == 0) {
+		if (parse_wpabuf_hex(line, buf, &bss->presp_elements, pos))
+			return 1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_SAE
 	} else if (os_strcmp(buf, "sae_password") == 0) {
@@ -4662,6 +4667,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				WLAN_RRM_CAPS_BEACON_REPORT_PASSIVE |
 				WLAN_RRM_CAPS_BEACON_REPORT_ACTIVE |
 				WLAN_RRM_CAPS_BEACON_REPORT_TABLE;
+	} else if (os_strcmp(buf, "rrm_link_measurement_report") == 0) {
+		if (atoi(pos))
+			bss->radio_measurements[0] |=
+				WLAN_RRM_CAPS_LINK_MEASUREMENT;
 	} else if (os_strcmp(buf, "gas_address3") == 0) {
 		bss->gas_address3 = atoi(pos);
 	} else if (os_strcmp(buf, "stationary_ap") == 0) {
@@ -4802,6 +4811,36 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		}
 
 		bss->multi_ap = val;
+	} else if (os_strcmp(buf, "multi_ap_profile") == 0) {
+		int val = atoi(pos);
+
+		if (val < MULTI_AP_PROFILE_1 || val > MULTI_AP_PROFILE_MAX) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: Invalid multi_ap_profile '%s'",
+				   line, buf);
+			return -1;
+		}
+		bss->multi_ap_profile = val;
+	} else if (os_strcmp(buf, "multi_ap_client_disallow") == 0) {
+		int val = atoi(pos);
+
+		if (val < 0 || val > 3) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: Invalid multi_ap_client_allow '%s'",
+				   line, buf);
+			return -1;
+		}
+		bss->multi_ap_client_disallow = val;
+	} else if (os_strcmp(buf, "multi_ap_vlanid") == 0) {
+		int val = atoi(pos);
+
+		if (val < 0 || val > MAX_VLAN_ID) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: Invalid multi_ap_vlan_id '%s'",
+				   line, buf);
+			return -1;
+		}
+		bss->multi_ap_vlanid = val;
 	} else if (os_strcmp(buf, "rssi_reject_assoc_rssi") == 0) {
 		conf->rssi_reject_assoc_rssi = atoi(pos);
 	} else if (os_strcmp(buf, "rssi_reject_assoc_timeout") == 0) {
@@ -5016,8 +5055,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		conf->punct_acs_threshold = val;
 	} else if (os_strcmp(buf, "mld_ap") == 0) {
 		bss->mld_ap = !!atoi(pos);
-	} else if (os_strcmp(buf, "mld_id") == 0) {
-		bss->mld_id = atoi(pos);
 	} else if (os_strcmp(buf, "mld_addr") == 0) {
 		if (hwaddr_aton(pos, bss->mld_addr)) {
 			wpa_printf(MSG_ERROR, "Line %d: Invalid mld_addr",

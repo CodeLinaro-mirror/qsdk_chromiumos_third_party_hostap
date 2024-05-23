@@ -163,6 +163,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	/* Default to strict CRL checking. */
 	bss->check_crl_strict = 1;
 
+	bss->multi_ap_profile = MULTI_AP_PROFILE_2;
+
 #ifdef CONFIG_TESTING_OPTIONS
 	bss->sae_commit_status = -1;
 	bss->test_assoc_comeback_type = -1;
@@ -965,6 +967,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	wpabuf_free(conf->igtk_rsc_override);
 	wpabuf_free(conf->eapol_m1_elements);
 	wpabuf_free(conf->eapol_m3_elements);
+	wpabuf_free(conf->presp_elements);
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	os_free(conf->no_probe_resp_if_seen_on);

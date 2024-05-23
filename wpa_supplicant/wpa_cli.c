@@ -4380,6 +4380,8 @@ static void wpa_cli_action_process(const char *msg)
 		}
 	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH_STARTED)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
+	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH)) {
+		wpa_cli_exec(action_file, ctrl_ifname, pos);
 	} else if (str_starts(pos, AP_EVENT_ENABLED)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
 	} else if (str_starts(pos, AP_EVENT_DISABLED)) {
@@ -5129,7 +5131,7 @@ int main(int argc, char *argv[])
 
 	eloop_register_signal_terminate(wpa_cli_terminate, NULL);
 
-	if (ctrl_ifname == NULL)
+	if (!ctrl_ifname && !global)
 		ctrl_ifname = wpa_cli_get_default_ifname();
 
 	if (reconnect && action_file && ctrl_ifname) {

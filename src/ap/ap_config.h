@@ -709,6 +709,7 @@ struct hostapd_bss_config {
 	struct wpabuf *eapol_m3_elements;
 	bool eapol_m3_no_encrypt;
 	int test_assoc_comeback_type;
+	struct wpabuf *presp_elements;
 
 #ifdef CONFIG_IEEE80211BE
 	u16 eht_oper_puncturing_override;
@@ -800,6 +801,14 @@ struct hostapd_bss_config {
 #define BACKHAUL_BSS 1
 #define FRONTHAUL_BSS 2
 	int multi_ap; /* bitmap of BACKHAUL_BSS, FRONTHAUL_BSS */
+	int multi_ap_profile;
+	/* Multi-AP Profile-1 clients not allowed to connect */
+#define PROFILE1_CLIENT_ASSOC_DISALLOW BIT(0)
+	/* Multi-AP Profile-2 clients not allowed to connect */
+#define PROFILE2_CLIENT_ASSOC_DISALLOW BIT(1)
+	unsigned int multi_ap_client_disallow;
+	/* Primary VLAN ID to use in Multi-AP */
+	int multi_ap_vlanid;
 
 #ifdef CONFIG_AIRTIME_POLICY
 	unsigned int airtime_weight;
@@ -1218,6 +1227,9 @@ struct hostapd_config {
 		MBSSID_ENABLED = 1,
 		ENHANCED_MBSSID_ENABLED = 2,
 	} mbssid;
+
+	/* Whether to enable TWT responder in HT and VHT modes */
+	bool ht_vht_twt_responder;
 };
 
 

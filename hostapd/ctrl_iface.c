@@ -1944,7 +1944,7 @@ static int hostapd_ctrl_iface_data_test_config(struct hostapd_data *hapd,
 
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->conf->mld_ap)
-		addr = hapd->mld_addr;
+		addr = hapd->mld->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 	hapd->l2_test = l2_packet_init(ifname, addr,
 					ETHERTYPE_IP, hostapd_data_test_rx,
@@ -2715,6 +2715,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 			   settings.freq_params.center_freq1);
 
 		/* Perform CAC and switch channel */
+		iface->is_ch_switch_dfs = true;
 		hostapd_switch_channel_fallback(iface, &settings.freq_params);
 		return 0;
 	}
@@ -3206,6 +3207,26 @@ static int hostapd_ctrl_iface_req_beacon(struct hostapd_data *hapd,
 }
 
 
+static int hostapd_ctrl_iface_req_link_measurement(struct hostapd_data *hapd,
+						   const char *cmd, char *reply,
+						   size_t reply_size)
+{
+	u8 addr[ETH_ALEN];
+	int ret;
+
+	if (hwaddr_aton(cmd, addr)) {
+		wpa_printf(MSG_ERROR,
+			   "CTRL: REQ_LINK_MEASUREMENT: Invalid MAC address");
+		return -1;
+	}
+
+	ret = hostapd_send_link_measurement_req(hapd, addr);
+	if (ret >= 0)
+		ret = os_snprintf(reply, reply_size, "%d", ret);
+	return ret;
+}
+
+
 static int hostapd_ctrl_iface_show_neighbor(struct hostapd_data *hapd,
 					    char *buf, size_t buflen)
 {
@@ -3476,10 +3497,8 @@ static int hostapd_ctrl_iface_enable_mld(struct hostapd_iface *iface)
 	for (i = 0; i < iface->interfaces->count; ++i) {
 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
 		struct hostapd_data *h_hapd = h_iface->bss[0];
-		struct hostapd_bss_config *h_conf = h_hapd->conf;
 
-		if (!h_conf->mld_ap ||
-		    h_conf->mld_id != iface->bss[0]->conf->mld_id)
+		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
 			continue;
 
 		if (hostapd_enable_iface(h_iface)) {
@@ -3503,7 +3522,6 @@ static void hostapd_disable_iface_bss(struct hostapd_iface *iface)
 static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
 {
 	unsigned int i;
-	struct hostapd_iface *first_iface = NULL;
 
 	if (!iface || !iface->bss[0]->conf->mld_ap) {
 		wpa_printf(MSG_ERROR,
@@ -3517,43 +3535,25 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
 	for (i = 0; i < iface->interfaces->count; ++i) {
 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
 		struct hostapd_data *h_hapd = h_iface->bss[0];
-		struct hostapd_bss_config *h_conf = h_hapd->conf;
 
-		if (!h_conf->mld_ap ||
-		    h_conf->mld_id != iface->bss[0]->conf->mld_id)
+		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
 			continue;
 
-		if (!h_hapd->mld_first_bss) {
-			first_iface = h_iface;
-			continue;
-		}
 		hostapd_disable_iface_bss(iface);
 	}
 
-	if (first_iface)
-		hostapd_disable_iface_bss(first_iface);
-
 	/* Then, fully disable interfaces */
-
 	for (i = 0; i < iface->interfaces->count; ++i) {
 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
 		struct hostapd_data *h_hapd = h_iface->bss[0];
-		struct hostapd_bss_config *h_conf = h_hapd->conf;
 
-		if (!h_conf->mld_ap ||
-		    h_conf->mld_id != iface->bss[0]->conf->mld_id ||
-		    !h_hapd->mld_first_bss)
+		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
 			continue;
 
 		if (hostapd_disable_iface(h_iface)) {
 			wpa_printf(MSG_ERROR, "Disabling AP MLD failed");
 			return -1;
 		}
-	}
-
-	if (first_iface && hostapd_disable_iface(first_iface)) {
-		wpa_printf(MSG_ERROR, "Disabling AP MLD failed");
-		return -1;
 	}
 
 	return 0;
@@ -4205,6 +4205,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "REQ_BEACON ", 11) == 0) {
 		reply_len = hostapd_ctrl_iface_req_beacon(hapd, buf + 11,
 							  reply, reply_size);
+	} else if (os_strncmp(buf, "REQ_LINK_MEASUREMENT ", 21) == 0) {
+		reply_len = hostapd_ctrl_iface_req_link_measurement(
+			hapd, buf + 21, reply, reply_size);
 	} else if (os_strcmp(buf, "DRIVER_FLAGS") == 0) {
 		reply_len = hostapd_ctrl_driver_flags(hapd->iface, reply,
 						      reply_size);

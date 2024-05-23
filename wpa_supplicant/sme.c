@@ -182,7 +182,7 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
 	if (!bss) {
 		wpa_printf(MSG_DEBUG,
 			   "SAE: BSS not available, update scan result to get BSS");
-		wpa_supplicant_update_scan_results(wpa_s);
+		wpa_supplicant_update_scan_results(wpa_s, bssid);
 		bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
 	}
 	if (bss) {
@@ -479,7 +479,7 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 				   data->auth.ies_len - ie_offset,
 				   &elems, 0) == ParseFailed) {
 		wpa_printf(MSG_DEBUG, "MLD: Failed parsing elements");
-		goto out;
+		return -1;
 	}
 
 	if (!elems.basic_mle || !elems.basic_mle_len) {
@@ -488,7 +488,7 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 		    status_code == WLAN_STATUS_SUCCESS ||
 		    status_code == WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
 		    status_code == WLAN_STATUS_SAE_PK)
-			goto out;
+			return -1;
 		/* Accept missing Multi-Link element in failed authentication
 		 * cases. */
 		return 0;
@@ -496,19 +496,17 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 
 	mld_addr = get_basic_mle_mld_addr(elems.basic_mle, elems.basic_mle_len);
 	if (!mld_addr)
-		goto out;
+		return -1;
 
 	wpa_printf(MSG_DEBUG, "MLD: mld_address=" MACSTR, MAC2STR(mld_addr));
 
 	if (!ether_addr_equal(wpa_s->ap_mld_addr, mld_addr)) {
 		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
 			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
-		goto out;
+		return -1;
 	}
 
 	return 0;
-out:
-	return -1;
 }
 
 
@@ -2413,12 +2411,16 @@ mscs_fail:
 
 	if (ssid && ssid->multi_ap_backhaul_sta) {
 		size_t multi_ap_ie_len;
+		struct multi_ap_params multi_ap = { 0 };
+
+		multi_ap.capability = MULTI_AP_BACKHAUL_STA;
+		multi_ap.profile = ssid->multi_ap_profile;
 
 		multi_ap_ie_len = add_multi_ap_ie(
 			wpa_s->sme.assoc_req_ie + wpa_s->sme.assoc_req_ie_len,
 			sizeof(wpa_s->sme.assoc_req_ie) -
 			wpa_s->sme.assoc_req_ie_len,
-			MULTI_AP_BACKHAUL_STA);
+			&multi_ap);
 		if (multi_ap_ie_len == 0) {
 			wpa_printf(MSG_ERROR,
 				   "Multi-AP: Failed to build Multi-AP IE");

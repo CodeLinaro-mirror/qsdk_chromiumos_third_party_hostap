@@ -94,8 +94,6 @@ struct mld_info {
 		u16 status;
 		u16 resp_sta_profile_len;
 		u8 *resp_sta_profile;
-
-		const u8 *rsne, *rsnxe;
 	} links[MAX_NUM_MLD_LINKS];
 };
 
@@ -439,5 +437,7 @@ static inline void ap_sta_set_mld(struct sta_info *sta, bool mld)
 }
 
 void ap_sta_free_sta_profile(struct mld_info *info);
+
+void hostapd_free_link_stas(struct hostapd_data *hapd);
 
 #endif /* STA_INFO_H */

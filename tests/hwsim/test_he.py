@@ -196,7 +196,6 @@ def test_he80(dev, apdev):
         clear_regdom(hapd, dev)
 
 def _test_he_wifi_generation(dev, apdev, conf, scan_freq):
-    """HE and wifi_generation"""
     try:
         hapd = None
         params = {"ssid": "he",
@@ -236,6 +235,7 @@ def _test_he_wifi_generation(dev, apdev, conf, scan_freq):
         clear_regdom(hapd, dev)
 
 def test_he_wifi_generation(dev, apdev):
+    """HE and wifi_generation (5 GHz)"""
     conf = {
         "vht_oper_chwidth": "1",
         "hw_mode": "a",
@@ -250,6 +250,7 @@ def test_he_wifi_generation(dev, apdev):
     _test_he_wifi_generation(dev, apdev, conf, "5180")
 
 def test_he_wifi_generation_24(dev, apdev):
+    """HE and wifi_generation (2.4 GHz)"""
     conf = {
         "hw_mode": "g",
         "channel": "1",
@@ -1679,6 +1680,7 @@ def test_he_6ghz_reg(dev, apdev):
         hapd = hostapd.add_ap(apdev[0], params, set_channel=False)
 
         dev[0].set("sae_pwe", "1")
+        dev[0].set("sae_groups", "")
         dev[0].connect(ssid, sae_password="password", key_mgmt="SAE",
                        ieee80211w="2", scan_freq=str(freq))
         hapd.wait_sta()

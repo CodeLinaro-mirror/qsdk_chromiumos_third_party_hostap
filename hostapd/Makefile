@@ -84,6 +84,7 @@ OBJS += ../src/ap/beacon.o
 OBJS += ../src/ap/bss_load.o
 OBJS += ../src/ap/neighbor_db.o
 OBJS += ../src/ap/rrm.o
+OBJS += ../src/common/ptksa_cache.o
 
 OBJS_c = hostapd_cli.o
 OBJS_c += ../src/common/wpa_ctrl.o
@@ -623,7 +624,6 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
-OBJS += ../src/common/ptksa_cache.o
 endif
 
 ifdef CONFIG_EAP_IKEV2
@@ -1206,6 +1206,7 @@ OBJS += ../src/ap/wmm.o
 OBJS += ../src/ap/ap_list.o
 OBJS += ../src/ap/comeback_token.o
 OBJS += ../src/pasn/pasn_responder.o
+OBJS += ../src/pasn/pasn_common.o
 OBJS += ../src/ap/ieee802_11.o
 OBJS += ../src/ap/hw_features.o
 OBJS += ../src/ap/dfs.o

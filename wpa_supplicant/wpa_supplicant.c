@@ -890,7 +890,7 @@ void wpa_supplicant_reset_bgscan(struct wpa_supplicant *wpa_s)
 			struct wpa_scan_results *scan_res;
 			wpa_s->bgscan_ssid = wpa_s->current_ssid;
 			scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL,
-								   0);
+								   0, NULL);
 			if (scan_res) {
 				bgscan_notify_scan(wpa_s, scan_res);
 				wpa_scan_results_free(scan_res);
@@ -2901,7 +2901,8 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
 	if (obss_scan) {
 		struct wpa_scan_results *scan_res;
 
-		scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0);
+		scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0,
+							   NULL);
 		if (scan_res == NULL) {
 			/* Back to HT20 */
 			freq->sec_channel_offset = 0;
@@ -3810,10 +3811,14 @@ mscs_end:
 
 	if (ssid->multi_ap_backhaul_sta) {
 		size_t multi_ap_ie_len;
+		struct multi_ap_params multi_ap = { 0 };
+
+		multi_ap.capability = MULTI_AP_BACKHAUL_STA;
+		multi_ap.profile = ssid->multi_ap_profile;
 
 		multi_ap_ie_len = add_multi_ap_ie(wpa_ie + wpa_ie_len,
 						  max_wpa_ie_len - wpa_ie_len,
-						  MULTI_AP_BACKHAUL_STA);
+						  &multi_ap);
 		if (multi_ap_ie_len == 0) {
 			wpa_printf(MSG_ERROR,
 				   "Multi-AP: Failed to build Multi-AP IE");
@@ -4528,7 +4533,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		eapol_sm_invalidate_cached_session(wpa_s->eapol);
 	}
 
-	if (!wpas_driver_bss_selection(wpa_s) || ssid->bssid_set) {
+	if (!wpas_driver_bss_selection(wpa_s) ||
+#ifdef CONFIG_P2P
+	    wpa_s->p2p_in_invitation ||
+#endif /* CONFIG_P2P */
+	    ssid->bssid_set) {
 		wpa_s->current_bss = bss;
 #ifdef CONFIG_HS20
 		hs20_configure_frame_filters(wpa_s);
@@ -4584,17 +4593,14 @@ void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 	int zero_addr = 0;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Request to deauthenticate - bssid=" MACSTR
-		" pending_bssid=" MACSTR " reason=%d (%s) state=%s",
+		" pending_bssid=" MACSTR
+		" reason=%d (%s) state=%s valid_links=0x%x ap_mld_addr=" MACSTR,
 		MAC2STR(wpa_s->bssid), MAC2STR(wpa_s->pending_bssid),
 		reason_code, reason2str(reason_code),
-		wpa_supplicant_state_txt(wpa_s->wpa_state));
+		wpa_supplicant_state_txt(wpa_s->wpa_state), wpa_s->valid_links,
+		MAC2STR(wpa_s->ap_mld_addr));
 
-	wpa_dbg(wpa_s, MSG_DEBUG,
-		"deauthenticate: valid_links=0x%x, ap_mld_addr=" MACSTR,
-		wpa_s->valid_links, MAC2STR(wpa_s->ap_mld_addr));
-
-	if (wpa_s->valid_links &&
-	    !is_zero_ether_addr(wpa_s->ap_mld_addr))
+	if (wpa_s->valid_links && !is_zero_ether_addr(wpa_s->ap_mld_addr))
 		addr = wpa_s->ap_mld_addr;
 	else if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
 		 (wpa_s->wpa_state == WPA_AUTHENTICATING ||
@@ -9346,17 +9352,21 @@ int wpa_drv_signal_poll(struct wpa_supplicant *wpa_s,
 
 
 struct wpa_scan_results *
-wpa_drv_get_scan_results2(struct wpa_supplicant *wpa_s)
+wpa_drv_get_scan_results(struct wpa_supplicant *wpa_s, const u8 *bssid)
 {
 	struct wpa_scan_results *scan_res;
 #ifdef CONFIG_TESTING_OPTIONS
 	size_t idx;
 #endif /* CONFIG_TESTING_OPTIONS */
 
-	if (!wpa_s->driver->get_scan_results2)
+	if (wpa_s->driver->get_scan_results)
+		scan_res = wpa_s->driver->get_scan_results(wpa_s->drv_priv,
+							   bssid);
+	else if (wpa_s->driver->get_scan_results2)
+		scan_res = wpa_s->driver->get_scan_results2(wpa_s->drv_priv);
+	else
 		return NULL;
 
-	scan_res = wpa_s->driver->get_scan_results2(wpa_s->drv_priv);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	for (idx = 0; scan_res && idx < scan_res->num; idx++) {

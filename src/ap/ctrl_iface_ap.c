@@ -465,6 +465,21 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 			len += ret;
 	}
 
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta) {
+		for (i = 0; i < MAX_NUM_MLD_LINKS; ++i) {
+			if (!sta->mld_info.links[i].valid)
+				continue;
+			ret = os_snprintf(
+				buf + len, buflen - len,
+				"peer_addr[%d]=" MACSTR "\n",
+				i, MAC2STR(sta->mld_info.links[i].peer_addr));
+			if (!os_snprintf_error(buflen - len, ret))
+				len += ret;
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	return len;
 }
 
@@ -887,6 +902,42 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 				return len;
 			len += ret;
 		}
+
+		if (hapd->conf->mld_ap) {
+			struct hostapd_data *link_bss;
+
+			ret = os_snprintf(buf + len, buflen - len,
+					  "num_links=%d\n",
+					  hapd->mld->num_links);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			/* Self BSS */
+			ret = os_snprintf(buf + len, buflen - len,
+					  "link_id=%d\n"
+					  "link_addr=" MACSTR "\n",
+					  hapd->mld_link_id,
+					  MAC2STR(hapd->own_addr));
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			/* Partner BSSs */
+			for_each_mld_link(link_bss, hapd) {
+				if (link_bss == hapd)
+					continue;
+
+				ret = os_snprintf(buf + len, buflen - len,
+						  "partner_link[%d]=" MACSTR
+						  "\n",
+						  link_bss->mld_link_id,
+						  MAC2STR(link_bss->own_addr));
+				if (os_snprintf_error(buflen - len, ret))
+					return len;
+				len += ret;
+			}
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1012,8 +1063,8 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 					  "mld_addr[%d]=" MACSTR "\n"
 					  "mld_id[%d]=%d\n"
 					  "mld_link_id[%d]=%d\n",
-					  (int) i, MAC2STR(bss->mld_addr),
-					  (int) i, bss->conf->mld_id,
+					  (int) i, MAC2STR(bss->mld->mld_addr),
+					  (int) i, hostapd_get_mld_id(bss),
 					  (int) i, bss->mld_link_id);
 			if (os_snprintf_error(buflen - len, ret))
 				return len;

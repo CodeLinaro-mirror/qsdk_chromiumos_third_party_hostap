@@ -889,6 +889,10 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 				nla_get_u16(tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]);
 		}
 
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: EML Capability: 0x%x MLD Capability: 0x%x",
+			   capa->eml_capa, capa->mld_capa_and_ops);
+
 		drv->num_iface_capa++;
 		if (drv->num_iface_capa == NL80211_IFTYPE_MAX)
 			break;
@@ -1437,6 +1441,8 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_AP_ALLOWED_FREQ_LIST,
 			  &info))
 		drv->qca_ap_allowed_freqs = 1;
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_HT_VHT_TWT_RESPONDER, &info))
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER;
 	os_free(info.flags);
 }
 
