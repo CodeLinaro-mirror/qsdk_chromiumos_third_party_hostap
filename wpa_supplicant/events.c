@@ -52,6 +52,7 @@
 #include "wmm_ac.h"
 #include "nan_usd.h"
 #include "dpp_supplicant.h"
+#include "utils/crc32.h"
 
 
 #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
@@ -2600,6 +2601,78 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 }
 
 
+static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
+				  union wpa_event_data *data)
+{
+	struct wpa_driver_scan_params params;
+	unsigned int j;
+
+	wpa_dbg(wpa_s, MSG_INFO, "Triggering 6GHz-only scan");
+	os_memset(&params, 0, sizeof(params));
+	params.non_coloc_6ghz = wpa_s->last_scan_non_coloc_6ghz;
+	for (j = 0; j < data->scan_info.num_ssids; j++)
+		params.ssids[j] = data->scan_info.ssids[j];
+	params.num_ssids = data->scan_info.num_ssids;
+	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+				true, false, false);
+	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
+		os_free(params.freqs);
+		return 1;
+	}
+	wpa_dbg(wpa_s, MSG_INFO, "Failed to trigger 6GHz-only scan");
+	os_free(params.freqs);
+	return 0;
+}
+
+
+static bool wpas_short_ssid_match(struct wpa_supplicant *wpa_s,
+				  struct wpa_scan_results *scan_res)
+{
+	size_t i;
+	u32 current_ssid_short = ieee80211_crc32(wpa_s->current_ssid->ssid,
+						 wpa_s->current_ssid->ssid_len);
+
+	for (i = 0; i < scan_res->num; i++) {
+		struct wpa_scan_res *res = scan_res->res[i];
+		const u8 *rnr_ie, *ie_end;
+		const struct ieee80211_neighbor_ap_info *info;
+		size_t left;
+
+		rnr_ie = wpa_scan_get_ie(res, WLAN_EID_REDUCED_NEIGHBOR_REPORT);
+		if (!rnr_ie)
+			continue;
+
+		ie_end = rnr_ie + 2 + rnr_ie[1];
+		rnr_ie += 2;
+
+		info = (const struct ieee80211_neighbor_ap_info *) rnr_ie;
+		if (info->tbtt_info_len < 11)
+			continue;
+		left = ie_end - rnr_ie;
+
+		if (left < sizeof(struct ieee80211_neighbor_ap_info))
+			continue;
+
+		left -= sizeof(struct ieee80211_neighbor_ap_info);
+		if (left < info->tbtt_info_len)
+			continue;
+
+		rnr_ie += sizeof(struct ieee80211_neighbor_ap_info);
+		while (rnr_ie + 11 <= ie_end) {
+			/* skip TBTT offset and BSSID */
+			u32 short_ssid = WPA_GET_LE32(rnr_ie + 1 + ETH_ALEN);
+
+			if (short_ssid == current_ssid_short)
+				return true;
+
+			rnr_ie += info->tbtt_info_len;
+		}
+	}
+
+	return false;
+}
+
+
 /*
  * Return a negative value if no scan results could be fetched or if scan
  * results should not be shared with other virtual interfaces.
@@ -2617,6 +2690,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	int ret = 0;
 	int ap = 0;
 	bool trigger_6ghz_scan;
+	bool short_ssid_match_found = false;
 #ifndef CONFIG_NO_RANDOM_POOL
 	size_t i, num;
 #endif /* CONFIG_NO_RANDOM_POOL */
@@ -2760,6 +2834,12 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	    wpa_s->wpa_state < WPA_COMPLETED)
 		goto scan_work_done;
 
+	if (wpa_s->current_ssid && trigger_6ghz_scan && own_request && data &&
+	    wpas_short_ssid_match(wpa_s, scan_res)) {
+		wpa_dbg(wpa_s, MSG_INFO, "Short SSID match in scan results");
+		short_ssid_match_found = true;
+	}
+
 	wpa_scan_results_free(scan_res);
 
 	if (own_request && wpa_s->scan_work) {
@@ -2786,6 +2866,9 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	if (wpa_s->supp_pbc_active && !wpas_wps_partner_link_scan_done(wpa_s))
 		return ret;
 
+	if (short_ssid_match_found && wpas_trigger_6ghz_scan(wpa_s, data) > 0)
+		return 1;
+
 	return wpas_select_network_from_last_scan(wpa_s, 1, own_request,
 						  trigger_6ghz_scan, data);
 
@@ -2797,30 +2880,6 @@ scan_work_done:
 		radio_work_done(work);
 	}
 	return ret;
-}
-
-
-static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
-				  union wpa_event_data *data)
-{
-	struct wpa_driver_scan_params params;
-	unsigned int j;
-
-	wpa_dbg(wpa_s, MSG_INFO, "Triggering 6GHz-only scan");
-	os_memset(&params, 0, sizeof(params));
-	params.non_coloc_6ghz = wpa_s->last_scan_non_coloc_6ghz;
-	for (j = 0; j < data->scan_info.num_ssids; j++)
-		params.ssids[j] = data->scan_info.ssids[j];
-	params.num_ssids = data->scan_info.num_ssids;
-	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
-				true, false, false);
-	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
-		os_free(params.freqs);
-		return 1;
-	}
-	wpa_dbg(wpa_s, MSG_INFO, "Failed to trigger 6GHz-only scan");
-	os_free(params.freqs);
-	return 0;
 }
 
 
@@ -2914,7 +2973,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 				wpa_supplicant_rsn_preauth_scan_results(wpa_s);
 		} else if (own_request) {
 			if (wpa_s->support_6ghz && trigger_6ghz_scan && data &&
-			    wpas_trigger_6ghz_scan(wpa_s, data) < 0)
+			    wpas_trigger_6ghz_scan(wpa_s, data) > 0)
 				return 1;
 
 			/*
