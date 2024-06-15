@@ -3599,6 +3599,41 @@ enum qca_wlan_vendor_attr_config {
 	/* 8-bit unsigned value. Refer to TX/RX NSS and chain configurations */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_NUM_RX_CHAINS_5GHZ = 117,
 
+	/* 16-bit unsigned value. This attribute is used to dynamically
+	 * configure the time duration of data stall detection. Unit is
+	 * milliseconds. Valid value range is 0 or 10 ms to 10000 ms. If the
+	 * value is 0, the previously configured value is cleared. The driver
+	 * rejects this configuration if the value is out of range. This
+	 * configuration is effective for all connections on the chip. If the
+	 * duration is greater than this configuration and consecutive TX no ack
+	 * count is greater than
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_CONSECUTIVE_TX_NO_ACK_THRESHOLD,
+	 * data stall event is sent to userspace.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_CONSECUTIVE_TX_NO_ACK_DURATION = 118,
+
+	/* 16-bit unsigned value. This attribute is used to dynamically
+	 * configure the threshold of data stall detection. Valid value is 0 or
+	 * greater than 10. if the value is 0, the previously configured value
+	 * is cleared. The driver rejects this configuration if the value is out
+	 * of range. This configuration is effective for all connections on the
+	 * chip. If consecutive TX no ack count is greater than this
+	 * configuration and duration is greater than
+	 * QCA_WLAN_VENDOR_ATTR_CONFIG_CONSECUTIVE_TX_NO_ACK_DURATION,
+	 * data stall event is sent to userspace.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_CONSECUTIVE_TX_NO_ACK_THRESHOLD = 119,
+
+	/* 8-bit unsigned value to configure the interface offload type
+	 *
+	 * This attribute is used to configure the interface offload capability.
+	 * User can configure software based acceleration, hardware based
+	 * acceleration, or a combination of both using this option. More
+	 * details on each option is described under the enum definition below.
+	 * Uses enum qca_wlan_intf_offload_type for values.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_INTF_OFFLOAD_TYPE = 120,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
@@ -17338,12 +17373,18 @@ enum qca_wlan_vendor_attr_ap_suspend {
  * @QCA_TRAFFIC_TYPE_GAMING: Traffic type is gaming
  * @QCA_TRAFFIC_TYPE_VOICE_CALL: Traffic type is a voice call
  * @QCA_TRAFFIC_TYPE_VIDEO_CALL: Traffic type is a video call
+ * @QCA_TRAFFIC_TYPE_SCREEN_SHARE: Traffic type is screen share
+ * @QCA_TRAFFIC_TYPE_UNKNOWN: Traffic type is unknown
+ * @QCA_TRAFFIC_TYPE_INVALID: Invalid traffic type
  */
 enum qca_traffic_type {
 	QCA_TRAFFIC_TYPE_STREAMING = 0,
 	QCA_TRAFFIC_TYPE_GAMING = 1,
 	QCA_TRAFFIC_TYPE_VOICE_CALL = 2,
 	QCA_TRAFFIC_TYPE_VIDEO_CALL = 3,
+	QCA_TRAFFIC_TYPE_SCREEN_SHARE = 4,
+	QCA_TRAFFIC_TYPE_UNKNOWN = 5,
+	QCA_TRAFFIC_TYPE_INVALID = 6,
 };
 
 /**
@@ -17726,6 +17767,54 @@ enum qca_wlan_vendor_attr_nss_pkt {
 	QCA_WLAN_VENDOR_ATTR_NSS_PKT_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_NSS_PKT_MAX =
 	QCA_WLAN_VENDOR_ATTR_NSS_PKT_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_intf_offload_type - Definition of available values for
+ * QCA_WLAN_VENDOR_ATTR_CONFIG_INTF_OFFLOAD_TYPE to specify the offload path for
+ * packets handled through a network device.
+ *
+ * There are three offload paths possible for handling packet forwarding between
+ * Ethernet and Wi-Fi network, and which path to use can be configured on a per
+ * netdevice level based on use case. Userspace can choose different options
+ * based on use cases like performance requirements, traffic control features
+ * and limitations provided in each option.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_INTF_OFFLOAD_TYPE_NONE: No acceleration configured.
+ * Packets are processed through the Linux kernel networking stack.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_INTF_OFFLOAD_TYPE_SFE: Packets are processed through
+ * the shortcut forwarding engine (SFE) to bypass the Linux networking stack
+ * for improved throughput performance. This option is applicable for AP, STA,
+ * and Mesh mode and available for all radio designs. From the performance
+ * aspect, this option consumes more CPU compared to the other two options.
+ * Linux traffic control can be further applied with this option to have more
+ * control on the traffic flows.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_INTF_OFFLOAD_TYPE_ACTIVE_VP: Packets are processed
+ * through both hardware and software in this case. Packet classification is
+ * done by the hardware and then the packets are delivered to software along
+ * with classification results as meta data. Software can choose to do more
+ * classification/QoS based on use cases. This is applicable for AP, STA, and
+ * Mesh modes and this is available for all radio designs. From the performance
+ * aspect, this option consumes relatively less CPU compared to the SFE option
+ * above. Linux traffic control rules cannot be applied with this option.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_INTF_OFFLOAD_TYPE_PPE_DS: Packets are processed through
+ * special hardware (Direct Switch) rings which can directly forward the packets
+ * between Ethernet hardware and Wi-Fi hardware with very little software
+ * involvement. This is applicable only for AP and STA modes; not applicable
+ * for Mesh mode. From the performance aspect, this option consumes very much
+ * less CPU compared to the other options. Linux traffic control rules cannot be
+ * applied when this option is used. This option is applicable only for
+ * specific radio designs. When this option is not available, the default option
+ * (SFE) would be configured.
+ */
+enum qca_wlan_intf_offload_type {
+	QCA_WLAN_INTF_OFFLOAD_TYPE_NONE = 0,
+	QCA_WLAN_INTF_OFFLOAD_TYPE_SFE = 1,
+	QCA_WLAN_INTF_OFFLOAD_TYPE_ACTIVE_VP = 2,
+	QCA_WLAN_INTF_OFFLOAD_TYPE_PPE_DS = 3,
 };
 
 #endif /* QCA_VENDOR_H */
