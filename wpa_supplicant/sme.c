@@ -71,7 +71,9 @@ static int sme_set_sae_group(struct wpa_supplicant *wpa_s, bool external)
 		int group = groups[wpa_s->sme.sae_group_index];
 		if (group <= 0)
 			break;
-		if (sae_set_group(&wpa_s->sme.sae, group) == 0) {
+		if (!int_array_includes(wpa_s->sme.sae_rejected_groups,
+					group) &&
+		    sae_set_group(&wpa_s->sme.sae, group) == 0) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "SME: Selected SAE group %d",
 				wpa_s->sme.sae.group);
 			wpa_s->sme.sae.akmp = external ?
@@ -390,7 +392,8 @@ static void wpas_ml_handle_removed_links(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_TESTING_OPTIONS
 static struct wpa_bss * wpas_ml_connect_pref(struct wpa_supplicant *wpa_s,
-					     struct wpa_bss *bss)
+					     struct wpa_bss *bss,
+					     struct wpa_ssid *ssid)
 {
 	unsigned int low, high, i;
 
@@ -456,7 +459,11 @@ found:
 		   MAC2STR(wpa_s->links[i].bssid));
 
 	/* Get the BSS entry and do the switch */
-	bss = wpa_bss_get_bssid(wpa_s, wpa_s->links[i].bssid);
+	if (ssid && ssid->ssid_len)
+		bss = wpa_bss_get(wpa_s, wpa_s->links[i].bssid, ssid->ssid,
+				  ssid->ssid_len);
+	else
+		bss = wpa_bss_get_bssid(wpa_s, wpa_s->links[i].bssid);
 	wpa_s->mlo_assoc_link_id = i;
 
 	return bss;
@@ -511,7 +518,7 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 
 
 static void wpas_sme_set_mlo_links(struct wpa_supplicant *wpa_s,
-				   struct wpa_bss *bss)
+				   struct wpa_bss *bss, struct wpa_ssid *ssid)
 {
 	u8 i;
 
@@ -528,6 +535,10 @@ static void wpas_sme_set_mlo_links(struct wpa_supplicant *wpa_s,
 
 		if (bss->mld_link_id == i)
 			wpa_s->links[i].bss = bss;
+		else if (ssid && ssid->ssid_len)
+			wpa_s->links[i].bss = wpa_bss_get(wpa_s, bssid,
+							  ssid->ssid,
+							  ssid->ssid_len);
 		else
 			wpa_s->links[i].bss = wpa_bss_get_bssid(wpa_s, bssid);
 	}
@@ -572,10 +583,10 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 					    NULL, ssid, NULL) &&
 	    bss->valid_links) {
 		wpa_printf(MSG_DEBUG, "MLD: In authentication");
-		wpas_sme_set_mlo_links(wpa_s, bss);
+		wpas_sme_set_mlo_links(wpa_s, bss, ssid);
 
 #ifdef CONFIG_TESTING_OPTIONS
-		bss = wpas_ml_connect_pref(wpa_s, bss);
+		bss = wpas_ml_connect_pref(wpa_s, bss, ssid);
 
 		if (wpa_s->conf->mld_force_single_link) {
 			wpa_printf(MSG_DEBUG, "MLD: Force single link");
@@ -1048,6 +1059,7 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	old_ssid = wpa_s->current_ssid;
 	wpa_s->current_ssid = ssid;
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
+	wpa_sm_set_ssid(wpa_s->wpa, bss->ssid, bss->ssid_len);
 	wpa_supplicant_initiate_eapol(wpa_s);
 
 #ifdef CONFIG_FILS
@@ -1572,14 +1584,21 @@ static int sme_sae_is_group_enabled(struct wpa_supplicant *wpa_s, int group)
 static int sme_check_sae_rejected_groups(struct wpa_supplicant *wpa_s,
 					 const struct wpabuf *groups)
 {
-	size_t i, count;
+	size_t i, count, len;
 	const u8 *pos;
 
 	if (!groups)
 		return 0;
 
 	pos = wpabuf_head(groups);
-	count = wpabuf_len(groups) / 2;
+	len = wpabuf_len(groups);
+	if (len & 1) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE: Invalid length of the Rejected Groups element payload: %zu",
+			   len);
+		return 1;
+	}
+	count = len / 2;
 	for (i = 0; i < count; i++) {
 		int enabled;
 		u16 group;
@@ -1875,6 +1894,7 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
 
 		wpa_s->sme.sae.state = SAE_ACCEPTED;
 		sae_clear_temp_data(&wpa_s->sme.sae);
+		wpa_s_clear_sae_rejected(wpa_s);
 
 		if (external) {
 			/* Report success to driver */
@@ -2017,6 +2037,12 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 					       NULL);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 
+			if (wpa_s->sme.sae_rejected_groups &&
+			    ssid->disabled_until.sec) {
+				wpa_printf(MSG_DEBUG,
+					   "SME: Clear SAE state with rejected groups due to continuous failures");
+				wpa_s_clear_sae_rejected(wpa_s);
+			}
 		}
 		if (res != 1)
 			return;

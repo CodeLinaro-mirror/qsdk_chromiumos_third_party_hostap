@@ -1398,6 +1398,7 @@ static int wpa_supplicant_install_mlo_gtk(struct wpa_sm *sm, u8 link_id,
 					  const u8 *key_rsc, int wnm_sleep)
 {
 	const u8 *gtk = gd->gtk;
+	u8 gtk_buf[32];
 
 	/* Detect possible key reinstallation */
 	if ((sm->mlo.links[link_id].gtk.gtk_len == (size_t) gd->gtk_len &&
@@ -1420,14 +1421,23 @@ static int wpa_supplicant_install_mlo_gtk(struct wpa_sm *sm, u8 link_id,
 		link_id, gd->keyidx, gd->tx, gd->gtk_len);
 	wpa_hexdump_link(MSG_DEBUG, link_id, "RSN: RSC",
 			 key_rsc, gd->key_rsc_len);
+	if (sm->group_cipher == WPA_CIPHER_TKIP) {
+		/* Swap Tx/Rx keys for Michael MIC */
+		os_memcpy(gtk_buf, gd->gtk, 16);
+		os_memcpy(gtk_buf + 16, gd->gtk + 24, 8);
+		os_memcpy(gtk_buf + 24, gd->gtk + 16, 8);
+		gtk = gtk_buf;
+	}
 	if (wpa_sm_set_key(sm, link_id, gd->alg, broadcast_ether_addr,
 			   gd->keyidx, gd->tx, key_rsc, gd->key_rsc_len, gtk,
 			   gd->gtk_len, KEY_FLAG_GROUP_RX) < 0) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
 			"RSN: Failed to set GTK to the driver (link_id=%d alg=%d keylen=%d keyidx=%d)",
 			link_id, gd->alg, gd->gtk_len, gd->keyidx);
+		forced_memzero(gtk_buf, sizeof(gtk_buf));
 		return -1;
 	}
+	forced_memzero(gtk_buf, sizeof(gtk_buf));
 
 	if (wnm_sleep) {
 		sm->mlo.links[link_id].gtk_wnm_sleep.gtk_len = gd->gtk_len;
@@ -2541,6 +2551,27 @@ static void wpa_supplicant_process_3_of_4(struct wpa_sm *sm,
 	wpa_hexdump(MSG_DEBUG, "WPA: IE KeyData", key_data, key_data_len);
 	if (wpa_supplicant_parse_ies(key_data, key_data_len, &ie) < 0)
 		goto failed;
+
+	if (sm->ssid_protection) {
+		if (!ie.ssid) {
+			wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+				"RSN: No SSID included in EAPOL-Key msg 3/4");
+			goto failed;
+		}
+
+		if (ie.ssid_len != sm->ssid_len ||
+		    os_memcmp(ie.ssid, sm->ssid, sm->ssid_len) != 0) {
+			wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+				"RSN: SSID mismatch in EAPOL-Key msg 3/4");
+			wpa_hexdump_ascii(MSG_DEBUG, "RSN: Received SSID",
+					  ie.ssid, ie.ssid_len);
+			wpa_hexdump_ascii(MSG_DEBUG, "RSN: Expected SSID",
+					  sm->ssid, sm->ssid_len);
+			goto failed;
+		}
+
+		wpa_sm_ssid_verified(sm);
+	}
 
 	if (mlo && !ie.valid_mlo_gtks) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
@@ -4460,6 +4491,20 @@ void wpa_sm_set_config(struct wpa_sm *sm, struct rsn_supp_config *config)
 }
 
 
+void wpa_sm_set_ssid(struct wpa_sm *sm, const u8 *ssid, size_t ssid_len)
+{
+	if (!sm)
+		return;
+
+	if (ssid) {
+		os_memcpy(sm->ssid, ssid, ssid_len);
+		sm->ssid_len = ssid_len;
+	} else {
+		sm->ssid_len = 0;
+	}
+}
+
+
 int wpa_sm_set_mlo_params(struct wpa_sm *sm, const struct wpa_sm_mlo *mlo)
 {
 	int i;
@@ -4688,6 +4733,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 		break;
 	case WPA_PARAM_FT_PREPEND_PMKID:
 		sm->ft_prepend_pmkid = value;
+		break;
+	case WPA_PARAM_SSID_PROTECTION:
+		sm->ssid_protection = value;
 		break;
 	default:
 		break;
@@ -4958,6 +5006,14 @@ int wpa_sm_set_assoc_rsnxe(struct wpa_sm *sm, const u8 *ie, size_t len)
 			return -1;
 
 		sm->assoc_rsnxe_len = len;
+	}
+
+	if (sm->ssid_protection &&
+	    !ieee802_11_rsnx_capab(sm->assoc_rsnxe,
+				   WLAN_RSNX_CAPAB_SSID_PROTECTION)) {
+		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
+			"RSN: Disabling SSID protection based on own RSNXE update");
+		sm->ssid_protection = 0;
 	}
 
 	return 0;

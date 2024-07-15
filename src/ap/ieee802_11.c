@@ -836,9 +836,38 @@ static int sae_check_big_sync(struct hostapd_data *hapd, struct sta_info *sta)
 	if (sta->sae->sync > hapd->conf->sae_sync) {
 		sae_set_state(sta, SAE_NOTHING, "Sync > dot11RSNASAESync");
 		sta->sae->sync = 0;
+		if (sta->sae->tmp) {
+			/* Disable this SAE instance for 10 seconds to avoid
+			 * unnecessary flood of multiple SAE commits in
+			 * unexpected mesh cases. */
+			if (os_get_reltime(&sta->sae->tmp->disabled_until) == 0)
+				sta->sae->tmp->disabled_until.sec += 10;
+		}
 		return -1;
 	}
 	return 0;
+}
+
+
+static bool sae_proto_instance_disabled(struct sta_info *sta)
+{
+	struct sae_temporary_data *tmp;
+
+	if (!sta->sae)
+		return false;
+	tmp = sta->sae->tmp;
+	if (!tmp)
+		return false;
+
+	if (os_reltime_initialized(&tmp->disabled_until)) {
+		struct os_reltime now;
+
+		os_get_reltime(&now);
+		if (os_reltime_before(&now, &tmp->disabled_until))
+			return true;
+	}
+
+	return false;
 }
 
 
@@ -985,6 +1014,13 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 	wpa_printf(MSG_DEBUG, "SAE: Peer " MACSTR " state=%s auth_trans=%u",
 		   MAC2STR(sta->addr), sae_state_txt(sta->sae->state),
 		   auth_transaction);
+
+	if (auth_transaction == 1 && sae_proto_instance_disabled(sta)) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE: Protocol instance temporarily disabled - discard received SAE commit");
+		return WLAN_STATUS_SUCCESS;
+	}
+
 	switch (sta->sae->state) {
 	case SAE_NOTHING:
 		if (auth_transaction == 1) {
@@ -1254,7 +1290,7 @@ static int check_sae_rejected_groups(struct hostapd_data *hapd,
 				     struct sae_data *sae)
 {
 	const struct wpabuf *groups;
-	size_t i, count;
+	size_t i, count, len;
 	const u8 *pos;
 
 	if (!sae->tmp)
@@ -1264,7 +1300,15 @@ static int check_sae_rejected_groups(struct hostapd_data *hapd,
 		return 0;
 
 	pos = wpabuf_head(groups);
-	count = wpabuf_len(groups) / 2;
+	len = wpabuf_len(groups);
+	if (len & 1) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE: Invalid length of the Rejected Groups element payload: %zu",
+			   len);
+		return 1;
+	}
+
+	count = len / 2;
 	for (i = 0; i < count; i++) {
 		int enabled;
 		u16 group;
@@ -1417,6 +1461,12 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 
 		if (!sae_status_success(hapd, status_code))
 			goto remove_sta;
+
+		if (sae_proto_instance_disabled(sta)) {
+			wpa_printf(MSG_DEBUG,
+				   "SAE: Protocol instance temporarily disabled - discard received SAE commit");
+			return;
+		}
 
 		if (!(hapd->conf->mesh & MESH_ENABLED) &&
 		    sta->sae->state == SAE_COMMITTED) {
@@ -1588,6 +1638,14 @@ reply:
 				auth_transaction, resp,
 				data ? wpabuf_head(data) : (u8 *) "",
 				data ? wpabuf_len(data) : 0, "auth-sae");
+		if (sta->sae && sta->sae->tmp && sta->sae->tmp->pw_id &&
+		    resp == WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER &&
+		    auth_transaction == 1) {
+			wpa_printf(MSG_DEBUG,
+				   "SAE: Clear stored password identifier since this SAE commit was not accepted");
+			os_free(sta->sae->tmp->pw_id);
+			sta->sae->tmp->pw_id = NULL;
+		}
 	}
 
 remove_sta:
@@ -2708,6 +2766,14 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
 	pasn_set_akmp(pasn, rsn_data.key_mgmt);
 	pasn_set_cipher(pasn, rsn_data.pairwise_cipher);
 
+	if (pasn->derive_kdk &&
+	    !ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
+				       WLAN_RSNX_CAPAB_SECURE_LTF))
+		pasn_disable_kdk_derivation(pasn);
+#ifdef CONFIG_TESTING_OPTIONS
+	if (hapd->conf->force_kdk_derivation)
+		pasn_enable_kdk_derivation(pasn);
+#endif /* CONFIG_TESTING_OPTIONS */
 	akmp = pasn_get_akmp(pasn);
 
 	if (wpa_key_mgmt_ft(akmp) && rsn_data.num_pmkid) {
@@ -4222,6 +4288,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				       "association");
 			return WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
 		}
+
+		wpa_auth_set_ssid_protection(
+			sta->wpa_sm,
+			hapd->conf->ssid_protection &&
+			ieee802_11_rsnx_capab_len(
+				elems->rsnxe, elems->rsnxe_len,
+				WLAN_RSNX_CAPAB_SSID_PROTECTION));
 #ifdef CONFIG_HS20
 	} else if (hapd->conf->osen) {
 		if (!elems->osen) {
@@ -5629,7 +5702,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 #endif /* CONFIG_FILS */
 
 	if (set_beacon)
-		ieee802_11_set_beacons(hapd->iface);
+		ieee802_11_update_beacons(hapd->iface);
 
  fail:
 
@@ -6604,6 +6677,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	if ((sta->flags & WLAN_STA_WDS) ||
 	    (sta->flags & WLAN_STA_MULTI_AP &&
 	     (hapd->conf->multi_ap & BACKHAUL_BSS) &&
+	     hapd->conf->wds_sta &&
 	     !(sta->flags & WLAN_STA_WPS))) {
 		int ret;
 		char ifname_wds[IFNAMSIZ + 1];

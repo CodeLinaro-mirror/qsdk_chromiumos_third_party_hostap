@@ -1611,6 +1611,12 @@ struct wpa_supplicant {
 	struct wpa_radio_work *nan_usd_listen_work;
 	struct wpa_radio_work *nan_usd_tx_work;
 #endif /* CONFIG_NAN_USD */
+
+	bool ssid_verified;
+	bool bigtk_set;
+	u64 first_beacon_tsf;
+	unsigned int beacons_checked;
+	unsigned int next_beacon_check;
 };
 
 
@@ -1895,6 +1901,7 @@ int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int pmf_in_use(struct wpa_supplicant *wpa_s, const u8 *addr);
 void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid,
 			bool force);
+void wpa_s_clear_sae_rejected(struct wpa_supplicant *wpa_s);
 
 bool wpas_is_sae_avoided(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *ssid,

@@ -526,6 +526,10 @@ def run_eht_mld_sae_two_links(dev, apdev, beacon_prot="1",
             # fall back to full SAE from failed PMKSA caching attempt
             # automatically.
             wpas.request("PMKSA_FLUSH")
+
+            # flush the BSS table before reconnect as otherwise the old
+            # AP MLD BSSs would be in the BSS list
+            wpas.request("BSS_FLUSH 0")
             wpas.request("RECONNECT")
             wpas.wait_connected()
             hapd0.wait_sta()
@@ -2166,7 +2170,23 @@ def test_eht_mlo_color_change(dev, apdev):
         if color != "60":
             raise Exception("Expected current he_bss_color to be 60; was " + color)
 
-        #TODO: CCA on non-first link
+        logger.info("Perform CCA on 2nd link")
+        if "OK" not in hapd1.request("COLOR_CHANGE 25"):
+            raise Exception("COLOR_CHANGE failed")
+        time.sleep(1.5)
+
+        color = hapd1.get_status_field("he_bss_color")
+        if color != "25":
+            raise Exception("Expected current he_bss_color to be 25; was " + color)
+
+        logger.info("Perform CCA on 2nd link again")
+        if "OK" not in hapd1.request("COLOR_CHANGE 5"):
+            raise Exception("COLOR_CHANGE failed")
+        time.sleep(1.5)
+
+        color = hapd1.get_status_field("he_bss_color")
+        if color != "5":
+            raise Exception("Expected current he_bss_color to be 5; was " + color)
 
         hapd0.dump_monitor()
         hapd1.dump_monitor()

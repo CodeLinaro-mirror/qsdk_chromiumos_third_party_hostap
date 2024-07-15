@@ -138,6 +138,33 @@ void wpas_network_reenabled(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static struct wpa_bss * __wpa_supplicant_get_new_bss(
+	struct wpa_supplicant *wpa_s, const u8 *bssid, const u8 *ssid,
+	size_t ssid_len)
+{
+	if (ssid && ssid_len > 0)
+		return wpa_bss_get(wpa_s, bssid, ssid, ssid_len);
+	else
+		return wpa_bss_get_bssid(wpa_s, bssid);
+}
+
+
+static struct wpa_bss * _wpa_supplicant_get_new_bss(
+	struct wpa_supplicant *wpa_s, const u8 *bssid, const u8 *ssid,
+	size_t ssid_len, bool try_update_scan_results)
+{
+	struct wpa_bss *bss = __wpa_supplicant_get_new_bss(wpa_s, bssid, ssid,
+							   ssid_len);
+
+	if (bss || !try_update_scan_results)
+		return bss;
+
+	wpa_supplicant_update_scan_results(wpa_s, bssid);
+
+	return __wpa_supplicant_get_new_bss(wpa_s, bssid, ssid, ssid_len);
+}
+
+
 static struct wpa_bss * wpa_supplicant_get_new_bss(
 	struct wpa_supplicant *wpa_s, const u8 *bssid)
 {
@@ -145,14 +172,23 @@ static struct wpa_bss * wpa_supplicant_get_new_bss(
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
 	u8 drv_ssid[SSID_MAX_LEN];
 	int res;
+	bool try_update_scan_results = true;
 
 	res = wpa_drv_get_ssid(wpa_s, drv_ssid);
-	if (res > 0)
-		bss = wpa_bss_get(wpa_s, bssid, drv_ssid, res);
-	if (!bss && ssid && ssid->ssid_len > 0)
-		bss = wpa_bss_get(wpa_s, bssid, ssid->ssid, ssid->ssid_len);
+	if (res > 0) {
+		bss = _wpa_supplicant_get_new_bss(wpa_s, bssid, drv_ssid, res,
+						  try_update_scan_results);
+		try_update_scan_results = false;
+	}
+	if (!bss && ssid && ssid->ssid_len > 0) {
+		bss = _wpa_supplicant_get_new_bss(wpa_s, bssid, ssid->ssid,
+						  ssid->ssid_len,
+						  try_update_scan_results);
+		try_update_scan_results = false;
+	}
 	if (!bss)
-		bss = wpa_bss_get_bssid(wpa_s, bssid);
+		bss = _wpa_supplicant_get_new_bss(wpa_s, bssid, NULL, 0,
+						  try_update_scan_results);
 
 	return bss;
 }
@@ -162,13 +198,6 @@ static struct wpa_bss *
 wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s, const u8 *bssid)
 {
 	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
-
-	if (!bss) {
-		wpa_supplicant_update_scan_results(wpa_s, bssid);
-
-		/* Get the BSS from the new scan results */
-		bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
-	}
 
 	if (bss)
 		wpa_s->current_bss = bss;
@@ -181,11 +210,6 @@ static void wpa_supplicant_update_link_bss(struct wpa_supplicant *wpa_s,
 					   u8 link_id, const u8 *bssid)
 {
 	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
-
-	if (!bss) {
-		wpa_supplicant_update_scan_results(wpa_s, bssid);
-		bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
-	}
 
 	if (bss)
 		wpa_s->links[link_id].bss = bss;
@@ -412,6 +436,9 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 #ifdef CONFIG_SME
 	wpa_s->sme.bss_max_idle_period = 0;
 #endif /* CONFIG_SME */
+
+	wpa_s->ssid_verified = false;
+	wpa_s->bigtk_set = false;
 }
 
 
@@ -3637,6 +3664,16 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 	bool bssid_known;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Association info event");
+	wpa_s->ssid_verified = false;
+	wpa_s->bigtk_set = false;
+#ifdef CONFIG_SAE
+#ifdef CONFIG_SME
+	/* SAE H2E binds the SSID into PT and that verifies the SSID
+	 * implicitly. */
+	if (wpa_s->sme.sae.state == SAE_ACCEPTED && wpa_s->sme.sae.h2e)
+		wpa_s->ssid_verified = true;
+#endif /* CONFIG_SME */
+#endif /* CONFIG_SAE */
 	bssid_known = wpa_drv_get_bssid(wpa_s, bssid) == 0;
 	if (data->assoc_info.req_ies)
 		wpa_hexdump(MSG_DEBUG, "req_ies", data->assoc_info.req_ies,
@@ -3738,14 +3775,22 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
-	if ((wpa_s->sme.auth_alg == WPA_AUTH_ALG_FILS ||
-	     wpa_s->sme.auth_alg == WPA_AUTH_ALG_FILS_SK_PFS) &&
-	    (!data->assoc_info.resp_frame ||
-	     fils_process_assoc_resp(wpa_s->wpa,
-				     data->assoc_info.resp_frame,
-				     data->assoc_info.resp_frame_len) < 0)) {
-		wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_UNSPECIFIED);
-		return -1;
+	if (wpa_s->sme.auth_alg == WPA_AUTH_ALG_FILS ||
+	    wpa_s->sme.auth_alg == WPA_AUTH_ALG_FILS_SK_PFS) {
+		if (!data->assoc_info.resp_frame ||
+		    fils_process_assoc_resp(wpa_s->wpa,
+					    data->assoc_info.resp_frame,
+					    data->assoc_info.resp_frame_len) <
+		    0) {
+			wpa_supplicant_deauthenticate(wpa_s,
+						      WLAN_REASON_UNSPECIFIED);
+			return -1;
+		}
+
+		/* FILS use of an AEAD cipher include the SSID element in
+		 * (Re)Association Request frame in the AAD and since the AP
+		 * accepted that, the SSID was verified. */
+		wpa_s->ssid_verified = true;
 	}
 #endif /* CONFIG_SME */
 
@@ -3806,6 +3851,9 @@ no_pfs:
 				wpa_s, WLAN_REASON_INVALID_IE);
 			return -1;
 		}
+		/* SSID is included in PMK-R0 derivation, so it is verified
+		 * implicitly. */
+		wpa_s->ssid_verified = true;
 	}
 
 	p = data->assoc_info.resp_ies;
@@ -3867,6 +3915,9 @@ no_pfs:
 			return -1;
 		}
 		wpa_dbg(wpa_s, MSG_DEBUG, "FT: Reassociation Response done");
+		/* SSID is included in PMK-R0 derivation, so it is verified
+		 * implicitly. */
+		wpa_s->ssid_verified = true;
 	}
 
 	wpa_sm_set_ft_params(wpa_s->wpa, data->assoc_info.resp_ies,
@@ -4346,13 +4397,6 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
 		struct wpa_bss *bss;
 
 		bss = wpa_supplicant_get_new_bss(wpa_s, drv_mlo.links[i].bssid);
-		if (!bss) {
-			wpa_supplicant_update_scan_results(
-				wpa_s, drv_mlo.links[i].bssid);
-			bss = wpa_supplicant_get_new_bss(
-				wpa_s, drv_mlo.links[i].bssid);
-		}
-
 		if (!bss) {
 			wpa_dbg(wpa_s, MSG_INFO,
 				"Failed to get MLO link %d BSS", i);
@@ -5912,7 +5956,8 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 {
 	const u8 *bssid = data->assoc_reject.bssid;
 	struct ieee802_11_elems elems;
-	const u8 *link_bssids[MAX_NUM_MLD_LINKS];
+	struct ml_sta_link_info ml_info[MAX_NUM_MLD_LINKS];
+	const u8 *link_bssids[MAX_NUM_MLD_LINKS + 1];
 #ifdef CONFIG_MBO
 	struct wpa_bss *reject_bss;
 #endif /* CONFIG_MBO */
@@ -6044,7 +6089,6 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
 	if (ieee802_11_parse_elems(data->assoc_reject.resp_ies,
 				   data->assoc_reject.resp_ies_len,
 				   &elems, 1) != ParseFailed) {
-		struct ml_sta_link_info ml_info[MAX_NUM_MLD_LINKS];
 		unsigned int n_links, i, idx;
 
 		idx = 0;

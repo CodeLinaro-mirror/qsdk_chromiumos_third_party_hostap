@@ -76,7 +76,7 @@
  *
  * This corresponds to:
  * ---
- * (busy time - tx time) / (active time - tx time) * 2^(chan_nf + band_min_nf)
+ * (busy time - tx time) / (active time - tx time) * 2^(chan_nf - band_min_nf)
  * ---
  *
  * The coefficient of 2 reflects the way power in "far-field"
@@ -93,7 +93,7 @@
  * calculated easily.
  * ---
  * (busy time - tx time) / (active time - tx time) *
- *    2^(10^(chan_nf/10) + 10^(band_min_nf/10))
+ *    2^(10^(chan_nf/10) - 10^(band_min_nf/10))
  * ---
  *
  * However to account for cases where busy/rx time is 0 (channel load is then
@@ -101,7 +101,7 @@
  * channel with lower noise floor is preferred. The equation becomes:
  * ---
  * 10^(chan_nf/5) + (busy time - tx time) / (active time - tx time) *
- *    2^(10^(chan_nf/10) + 10^(band_min_nf/10))
+ *    2^(10^(chan_nf/10) - 10^(band_min_nf/10))
  * ---
  *
  * All this "interference factor" is purely subjective and only time
@@ -511,7 +511,7 @@ static int acs_survey_list_is_sufficient(struct hostapd_channel_data *chan)
 	}
 
 	if (ret == -1)
-		ret = 1; /* no survey list entries */
+		ret = 0; /* no survey list entries */
 
 	if (!ret) {
 		wpa_printf(MSG_INFO,
@@ -834,6 +834,9 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 	int bw320_offset = 0, ideal_bw320_offset = 0;
 	unsigned int k;
 	int secondary_channel = 1, freq_offset;
+#ifdef CONFIG_IEEE80211BE
+	int index_primary = 0;
+#endif /* CONFIG_IEEE80211BE */
 
 	if (is_24ghz_mode(mode->mode))
 		secondary_channel = iface->conf->secondary_channel;
@@ -973,6 +976,9 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 				   best->chan, chan->chan,
 				   chan->interference_factor,
 				   best->interference_factor);
+#ifdef CONFIG_IEEE80211BE
+			index_primary = (chan->freq - best->freq) / 20;
+#endif /* CONFIG_IEEE80211BE */
 			chan = best;
 		}
 
@@ -1061,7 +1067,8 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 			if (iface->conf->ieee80211be)
 				acs_update_puncturing_bitmap(iface, mode, bw,
 							     n_chans, chan,
-							     factor, 0);
+							     factor,
+							     index_primary);
 #endif /* CONFIG_IEEE80211BE */
 		}
 

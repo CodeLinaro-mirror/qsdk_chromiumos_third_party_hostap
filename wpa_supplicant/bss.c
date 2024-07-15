@@ -1226,6 +1226,31 @@ const u8 * wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie)
 
 
 /**
+ * wpa_bss_get_ie_beacon - Fetch a specified information element from a BSS entry
+ * @bss: BSS table entry
+ * @ie: Information element identitifier (WLAN_EID_*)
+ * Returns: Pointer to the information element (id field) or %NULL if not found
+ *
+ * This function returns the first matching information element in the BSS
+ * entry.
+ *
+ * This function is like wpa_bss_get_ie(), but uses IE buffer only from Beacon
+ * frames instead of either Beacon or Probe Response frames.
+ */
+const u8 * wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie)
+{
+	const u8 *ies;
+
+	if (bss->beacon_ie_len == 0)
+		return NULL;
+
+	ies = wpa_bss_ie_ptr(bss);
+	ies += bss->ie_len;
+	return get_ie(ies, bss->beacon_ie_len, ie);
+}
+
+
+/**
  * wpa_bss_get_ie_ext - Fetch a specified extended IE from a BSS entry
  * @bss: BSS table entry
  * @ext: Information element extension identifier (WLAN_EID_EXT_*)
@@ -1529,8 +1554,14 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Reported link not part of MLD");
 		} else if (!(BIT(link_id) & *seen)) {
-			struct wpa_bss *neigh_bss =
-				wpa_bss_get_bssid(wpa_s, pos + 1);
+			struct wpa_bss *neigh_bss;
+
+			if (ssid && ssid->ssid_len)
+				neigh_bss = wpa_bss_get(wpa_s, pos + 1,
+							ssid->ssid,
+							ssid->ssid_len);
+			else
+				neigh_bss = wpa_bss_get_bssid(wpa_s, pos + 1);
 
 			*seen |= BIT(link_id);
 			wpa_printf(MSG_DEBUG, "MLD: mld ID=%u, link ID=%u",
