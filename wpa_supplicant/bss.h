@@ -165,6 +165,9 @@ void wpa_bss_flush(struct wpa_supplicant *wpa_s);
 void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age);
 struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
 			     const u8 *ssid, size_t ssid_len);
+struct wpa_bss * wpa_bss_get_connection(struct wpa_supplicant *wpa_s,
+					const u8 *bssid,
+					const u8 *ssid, size_t ssid_len);
 struct wpa_bss * wpa_bss_get_bssid(struct wpa_supplicant *wpa_s,
 				   const u8 *bssid);
 struct wpa_bss * wpa_bss_get_bssid_latest(struct wpa_supplicant *wpa_s,
@@ -225,5 +228,12 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
 				   u8 *ap_mld_id);
 u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 				    struct wpa_bss *bss);
+
+const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			    bool mlo);
+const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+			     const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			     bool mlo);
 
 #endif /* BSS_H */

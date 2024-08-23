@@ -805,6 +805,7 @@ struct wpa_supplicant {
 	size_t last_scan_res_used;
 	size_t last_scan_res_size;
 	struct os_reltime last_scan;
+	bool last_scan_external;
 
 	const struct wpa_driver_ops *driver;
 	int interface_removed; /* whether the network interface has been
@@ -921,6 +922,7 @@ struct wpa_supplicant {
 	u64 drv_flags2;
 	unsigned int drv_enc;
 	unsigned int drv_ciphers;
+	unsigned int drv_key_mgmt;
 	unsigned int drv_rrm_flags;
 	unsigned int drv_max_acl_mac_addrs;
 
@@ -1301,13 +1303,15 @@ struct wpa_supplicant {
 	u8 *mac_addr_pno;
 
 #ifdef CONFIG_WNM
+	bool wnm_transition_scan;
 	u8 wnm_dialog_token;
 	u8 wnm_reply;
 	u8 wnm_num_neighbor_report;
 	u8 wnm_mode;
 	bool wnm_link_removal;
-	u8 wnm_dissoc_addr[ETH_ALEN];
-	u16 wnm_dissoc_timer;
+	bool wnm_disassoc_mld;
+	u8 wnm_disassoc_addr[ETH_ALEN];
+	u16 wnm_disassoc_timer;
 	u8 wnm_bss_termination_duration[12];
 	struct neighbor_report *wnm_neighbor_report_elements;
 	struct os_reltime wnm_cand_valid_until;
@@ -1580,7 +1584,7 @@ struct wpa_supplicant {
 	bool wps_scan_done; /* Set upon receiving scan results event */
 	bool supp_pbc_active; /* Set for interface when PBC is triggered */
 	bool wps_overlap;
-	bool scan_in_progress_6ghz; /* Set upon a 6GHz scan being triggered */
+	bool scan_in_progress_6ghz; /* Set upon a 6 GHz scan being triggered */
 
 #ifdef CONFIG_PASN
 	struct pasn_data pasn;
@@ -1728,6 +1732,7 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
 void fils_connection_failure(struct wpa_supplicant *wpa_s);
 void fils_pmksa_cache_flush(struct wpa_supplicant *wpa_s);
 int wpas_driver_bss_selection(struct wpa_supplicant *wpa_s);
+bool wpas_rsn_overriding(struct wpa_supplicant *wpa_s);
 int wpas_is_p2p_prioritized(struct wpa_supplicant *wpa_s);
 void wpas_auth_failed(struct wpa_supplicant *wpa_s, const char *reason,
 		      const u8 *bssid);
@@ -2012,5 +2017,11 @@ bool wpas_is_6ghz_supported(struct wpa_supplicant *wpa_s, bool only_enabled);
 
 bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss);
 bool wpas_ap_link_address(struct wpa_supplicant *wpa_s, const u8 *addr);
+bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
+				     struct wpa_bss *bss);
+bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
+				       struct wpa_bss *bss);
+int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
+			       const u8 **ssid, size_t *ssid_len);
 
 #endif /* WPA_SUPPLICANT_I_H */

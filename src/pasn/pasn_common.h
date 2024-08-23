@@ -174,7 +174,8 @@ int wpa_pasn_auth_tx_status(struct pasn_data *pasn,
 /* Responder */
 int handle_auth_pasn_1(struct pasn_data *pasn,
 		       const u8 *own_addr, const u8 *peer_addr,
-		       const struct ieee80211_mgmt *mgmt, size_t len);
+		       const struct ieee80211_mgmt *mgmt, size_t len,
+		       bool reject);
 int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
 		       const u8 *peer_addr,
 		       const struct ieee80211_mgmt *mgmt, size_t len);
@@ -207,6 +208,7 @@ void pasn_set_responder_pmksa(struct pasn_data *pasn,
 int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt);
 
 /* Responder */
+void pasn_set_noauth(struct pasn_data *pasn, bool noauth);
 void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt);
 void pasn_set_rsn_pairwise(struct pasn_data *pasn, int rsn_pairwise);
