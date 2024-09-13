@@ -3835,7 +3835,7 @@ dbus_bool_t wpas_dbus_getter_roam_complete(
 }
 
 /**
- * wpas_dbus_getter_scan_in_progress_6ghz - Get whether a 6 GHz scan is in
+ * wpas_dbus_getter_scan_in_progress_6ghz - Get whether a 6ghz scan is in
  * progress
  * @iter: Pointer to incoming dbus message iter
  * @error: Location to store error on failure
@@ -3849,8 +3849,7 @@ dbus_bool_t wpas_dbus_getter_scan_in_progress_6ghz(
 	DBusMessageIter *iter, DBusError *error, void *user_data)
 {
 	struct wpa_supplicant *wpa_s = user_data;
-	dbus_bool_t scan_in_progress_6ghz = wpa_s->scan_in_progress_6ghz ?
-		TRUE : FALSE;
+	dbus_bool_t scan_in_progress_6ghz = wpa_s->scan_in_progress_6ghz ? TRUE : FALSE;
 
 	return wpas_dbus_simple_property_getter(iter, DBUS_TYPE_BOOLEAN,
 						&scan_in_progress_6ghz, error);
@@ -5684,7 +5683,7 @@ dbus_bool_t wpas_dbus_getter_bss_rsn(
 		return FALSE;
 
 	os_memset(&wpa_data, 0, sizeof(wpa_data));
-	ie = wpa_bss_get_rsne(args->wpa_s, res, NULL, false);
+	ie = wpa_bss_get_ie(res, WLAN_EID_RSN);
 	if (ie && wpa_parse_wpa_ie(ie, 2 + ie[1], &wpa_data) < 0) {
 		dbus_set_error_const(error, DBUS_ERROR_FAILED,
 				     "failed to parse RSN IE");

@@ -172,8 +172,7 @@ void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s)
 	if (wpa_s->p2p_mgmt)
 		return;
 
-	wpas_dbus_signal_prop_changed(wpa_s,
-				      WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ);
+	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ);
 }
 
 

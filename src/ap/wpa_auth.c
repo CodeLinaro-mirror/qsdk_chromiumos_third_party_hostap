@@ -112,7 +112,10 @@ static void wpa_gkeydone_sta(struct wpa_state_machine *sm)
 	int link_id;
 #endif /* CONFIG_IEEE80211BE */
 
-	sm->group->GKeyDoneStations--;
+	if (!sm->wpa_auth)
+		return;
+
+	sm->wpa_auth->group->GKeyDoneStations--;
 	sm->GUpdateStationKeys = false;
 
 #ifdef CONFIG_IEEE80211BE
@@ -1043,7 +1046,6 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
 	os_free(sm->last_rx_eapol_key);
 	os_free(sm->wpa_ie);
 	os_free(sm->rsnxe);
-	os_free(sm->rsn_selection);
 #ifdef CONFIG_IEEE80211BE
 	for_each_sm_auth(sm, link_id) {
 		wpa_group_put(sm->mld_links[link_id].wpa_auth,
@@ -1884,8 +1886,7 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
 	sm->EAPOLKeyReceived = true;
 	sm->EAPOLKeyPairwise = !!(key_info & WPA_KEY_INFO_KEY_TYPE);
 	sm->EAPOLKeyRequest = !!(key_info & WPA_KEY_INFO_REQUEST);
-	if (msg == PAIRWISE_2)
-		os_memcpy(sm->SNonce, key->key_nonce, WPA_NONCE_LEN);
+	os_memcpy(sm->SNonce, key->key_nonce, WPA_NONCE_LEN);
 	wpa_sm_step(sm);
 
 out:
@@ -2062,11 +2063,6 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 
 	if (key_rsc)
 		os_memcpy(key->key_rsc, key_rsc, WPA_KEY_RSC_LEN);
-
-#ifdef CONFIG_TESTING_OPTIONS
-	if (conf->eapol_key_reserved_random)
-		random_get_bytes(key->key_id, sizeof(key->key_id));
-#endif /* CONFIG_TESTING_OPTIONS */
 
 	if (kde && !encr) {
 		os_memcpy(key_data, kde, kde_len);
@@ -3918,34 +3914,6 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		goto out;
 	}
 #endif /* CONFIG_IEEE80211R_AP */
-
-	/* Verify RSN Selection element for RSN overriding */
-	if ((wpa_auth->conf.rsn_override_key_mgmt ||
-	     wpa_auth->conf.rsn_override_key_mgmt_2) &&
-	    ((rsn_is_snonce_cookie(sm->SNonce) && !kde.rsn_selection) ||
-	     (!rsn_is_snonce_cookie(sm->SNonce) && kde.rsn_selection) ||
-	     (sm->rsn_selection && !kde.rsn_selection) ||
-	     (!sm->rsn_selection && kde.rsn_selection) ||
-	     (sm->rsn_selection && kde.rsn_selection &&
-	      (sm->rsn_selection_len != kde.rsn_selection_len ||
-	       os_memcmp(sm->rsn_selection, kde.rsn_selection,
-			 sm->rsn_selection_len) != 0)))) {
-		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
-				"RSN Selection element from (Re)AssocReq did not match the one in EAPOL-Key msg 2/4");
-		wpa_printf(MSG_DEBUG,
-			   "SNonce cookie for RSN overriding %sused",
-			   rsn_is_snonce_cookie(sm->SNonce) ? "" : "not ");
-		wpa_hexdump(MSG_DEBUG, "RSN Selection in AssocReq",
-			    sm->rsn_selection, sm->rsn_selection_len);
-		wpa_hexdump(MSG_DEBUG, "RSN Selection in EAPOL-Key msg 2/4",
-			    kde.rsn_selection, kde.rsn_selection_len);
-		/* MLME-DEAUTHENTICATE.request */
-		wpa_sta_disconnect(wpa_auth, sm->addr,
-				   WLAN_REASON_PREV_AUTH_NOT_VALID);
-		goto out;
-
-	}
-
 #ifdef CONFIG_P2P
 	if (kde.ip_addr_req && kde.ip_addr_req[0] &&
 	    wpa_auth->ip_pool && WPA_GET_BE32(sm->ip_addr) == 0) {
@@ -4209,8 +4177,7 @@ static u8 * replace_ie(const char *name, const u8 *old_buf, size_t *len, u8 eid,
 
 void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 			      struct wpa_auth_ml_link_key_info *info,
-			      bool mgmt_frame_prot, bool beacon_prot,
-			      bool rekey)
+			      bool mgmt_frame_prot, bool beacon_prot)
 {
 	struct wpa_group *gsm = a->group;
 	u8 rsc[WPA_KEY_RSC_LEN];
@@ -4223,7 +4190,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 	info->gtk = gsm->GTK[gsm->GN - 1];
 	info->gtk_len = gsm->GTK_len;
 
-	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN, rsc) < 0)
+	if (wpa_auth_get_seqnum(a, NULL, gsm->GN, rsc) < 0)
 		os_memset(info->pn, 0, sizeof(info->pn));
 	else
 		os_memcpy(info->pn, rsc, sizeof(info->pn));
@@ -4235,7 +4202,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 	info->igtk = gsm->IGTK[gsm->GN_igtk - 4];
 	info->igtk_len = wpa_cipher_key_len(a->conf.group_mgmt_cipher);
 
-	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN_igtk, rsc) < 0)
+	if (wpa_auth_get_seqnum(a, NULL, gsm->GN_igtk, rsc) < 0)
 		os_memset(info->ipn, 0, sizeof(info->ipn));
 	else
 		os_memcpy(info->ipn, rsc, sizeof(info->ipn));
@@ -4251,7 +4218,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 	info->bigtkidx = gsm->GN_bigtk;
 	info->bigtk = gsm->BIGTK[gsm->GN_bigtk - 6];
 
-	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN_bigtk, rsc) < 0)
+	if (wpa_auth_get_seqnum(a, NULL, gsm->GN_bigtk, rsc) < 0)
 		os_memset(info->bipn, 0, sizeof(info->bipn));
 	else
 		os_memcpy(info->bipn, rsc, sizeof(info->bipn));
@@ -4259,13 +4226,12 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 
 
 static void wpa_auth_get_ml_key_info(struct wpa_authenticator *wpa_auth,
-				     struct wpa_auth_ml_key_info *info,
-				     bool rekey)
+				     struct wpa_auth_ml_key_info *info)
 {
 	if (!wpa_auth->cb->get_ml_key_info)
 		return;
 
-	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info, rekey);
+	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info);
 }
 
 
@@ -4322,7 +4288,6 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
 	struct wpa_auth_ml_key_info ml_key_info;
 	unsigned int i, link_id;
 	u8 *start = pos;
-	bool rekey = sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING;
 
 	/* First fetch the key information from all the authenticators */
 	os_memset(&ml_key_info, 0, sizeof(ml_key_info));
@@ -4342,7 +4307,7 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
 		ml_key_info.links[i++].link_id = link_id;
 	}
 
-	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info, rekey);
+	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info);
 
 	/* Add MLO GTK KDEs */
 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
@@ -4481,7 +4446,7 @@ static size_t wpa_auth_ml_kdes_len(struct wpa_state_machine *sm)
 	/* For the MAC Address KDE */
 	kde_len = 2 + RSN_SELECTOR_LEN + ETH_ALEN;
 
-	/* MLO Link KDE and RSN Override Link KDE for each link */
+	/* MLO Link KDE for each link */
 	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
 		struct wpa_authenticator *wpa_auth;
 		const u8 *ie;
@@ -4490,37 +4455,13 @@ static size_t wpa_auth_ml_kdes_len(struct wpa_state_machine *sm)
 		if (!wpa_auth)
 			continue;
 
-		/* MLO Link KDE */
 		kde_len += 2 + RSN_SELECTOR_LEN + 1 + ETH_ALEN;
-
 		ie = get_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
 			    WLAN_EID_RSN);
 		if (ie)
 			kde_len += 2 + ie[1];
-
 		ie = get_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
 			    WLAN_EID_RSNX);
-		if (ie)
-			kde_len += 2 + ie[1];
-
-		if (!rsn_is_snonce_cookie(sm->SNonce))
-			continue;
-
-		/* RSN Override Link KDE */
-		kde_len += 2 + RSN_SELECTOR_LEN + 1;
-
-		ie = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				   RSNE_OVERRIDE_IE_VENDOR_TYPE);
-		if (ie)
-			kde_len += 2 + ie[1];
-
-		ie = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				   RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
-		if (ie)
-			kde_len += 2 + ie[1];
-
-		ie = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				   RSNXE_OVERRIDE_IE_VENDOR_TYPE);
 		if (ie)
 			kde_len += 2 + ie[1];
 	}
@@ -4547,8 +4488,8 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
 
 	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
 		struct wpa_authenticator *wpa_auth;
-		const u8 *rsne, *rsnxe, *rsnoe, *rsno2e, *rsnxoe;
-		size_t rsne_len, rsnxe_len, rsnoe_len, rsno2e_len, rsnxoe_len;
+		const u8 *rsne, *rsnxe;
+		size_t rsne_len, rsnxe_len;
 
 		wpa_auth = wpa_get_link_auth(sm->wpa_auth, link_id);
 		if (!wpa_auth)
@@ -4567,7 +4508,6 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
 			   RSN_SELECTOR_LEN + 1 + ETH_ALEN +
 			   rsne_len + rsnxe_len);
 
-		/* MLO Link KDE */
 		*pos++ = WLAN_EID_VENDOR_SPECIFIC;
 		*pos++ = RSN_SELECTOR_LEN + 1 + ETH_ALEN +
 			rsne_len + rsnxe_len;
@@ -4595,56 +4535,9 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
 			os_memcpy(pos, rsnxe, rsnxe_len);
 			pos += rsnxe_len;
 		}
-
-		if (!rsn_is_snonce_cookie(sm->SNonce))
-			continue;
-
-		rsnoe = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
-		rsnoe_len = rsnoe ? 2 + rsnoe[1] : 0;
-
-		rsno2e = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
-		rsno2e_len = rsno2e ? 2 + rsno2e[1] : 0;
-
-		rsnxoe = get_vendor_ie(wpa_auth->wpa_ie, wpa_auth->wpa_ie_len,
-				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
-		rsnxoe_len = rsnxoe ? 2 + rsnxoe[1] : 0;
-
-		wpa_printf(MSG_DEBUG,
-			   "RSN: RSN Override Link KDE: link=%u, len=%zu",
-			   link_id, RSN_SELECTOR_LEN + rsnoe_len + rsno2e_len +
-			   rsnxoe_len);
-
-		/* RSN Override Link KDE */
-		*pos++ = WLAN_EID_VENDOR_SPECIFIC;
-		*pos++ = RSN_SELECTOR_LEN + 1 + rsnoe_len + rsno2e_len +
-			rsnxoe_len;
-
-		RSN_SELECTOR_PUT(pos, WFA_KEY_DATA_RSN_OVERRIDE_LINK);
-		pos += RSN_SELECTOR_LEN;
-
-		*pos++ = link_id;
-
-		if (rsnoe_len) {
-			os_memcpy(pos, rsnoe, rsnoe_len);
-			pos += rsnoe_len;
-		}
-
-		if (rsno2e_len) {
-			os_memcpy(pos, rsno2e, rsno2e_len);
-			pos += rsno2e_len;
-		}
-
-		if (rsnxoe_len) {
-			os_memcpy(pos, rsnxoe, rsnxoe_len);
-			pos += rsnxoe_len;
-		}
 	}
 
-	wpa_printf(MSG_DEBUG,
-		   "RSN: MLO Link KDEs and RSN Override Link KDEs len = %ld",
-		   pos - start);
+	wpa_printf(MSG_DEBUG, "RSN: MLO Link KDE len = %ld", pos - start);
 	pos = wpa_auth_ml_group_kdes(sm, pos);
 #endif /* CONFIG_IEEE80211BE */
 
@@ -4659,7 +4552,7 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 	struct wpa_group *gsm = sm->group;
 	u8 *wpa_ie;
 	int secure, gtkidx, encr = 0;
-	u8 *wpa_ie_buf = NULL, *wpa_ie_buf2 = NULL, *wpa_ie_buf3 = NULL;
+	u8 *wpa_ie_buf = NULL, *wpa_ie_buf2 = NULL;
 	u8 hdr[2];
 	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
 #ifdef CONFIG_IEEE80211BE
@@ -4699,39 +4592,6 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 		if (wpa_ie[0] == WLAN_EID_MOBILITY_DOMAIN)
 			wpa_ie = wpa_ie + wpa_ie[1] + 2;
 		wpa_ie_len = wpa_ie[1] + 2;
-	}
-	if ((conf->rsn_override_key_mgmt || conf->rsn_override_key_mgmt_2) &&
-	    !rsn_is_snonce_cookie(sm->SNonce)) {
-		u8 *ie;
-		size_t ie_len;
-		u32 ids[] = {
-			RSNE_OVERRIDE_IE_VENDOR_TYPE,
-			RSNE_OVERRIDE_2_IE_VENDOR_TYPE,
-			RSNXE_OVERRIDE_IE_VENDOR_TYPE,
-			0
-		};
-		int i;
-
-		wpa_printf(MSG_DEBUG,
-			   "RSN: Remove RSNE/RSNXE override elements");
-		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs before edits",
-			    wpa_ie, wpa_ie_len);
-		wpa_ie_buf3 = os_memdup(wpa_ie, wpa_ie_len);
-		if (!wpa_ie_buf3)
-			goto done;
-		wpa_ie = wpa_ie_buf3;
-
-		for (i = 0; ids[i]; i++) {
-			ie = (u8 *) get_vendor_ie(wpa_ie, wpa_ie_len, ids[i]);
-			if (ie) {
-				ie_len = 2 + ie[1];
-				os_memmove(ie, ie + ie_len,
-					   wpa_ie_len - (ie + ie_len - wpa_ie));
-				wpa_ie_len -= ie_len;
-			}
-		}
-		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs after edits",
-			    wpa_ie, wpa_ie_len);
 	}
 #ifdef CONFIG_TESTING_OPTIONS
 	if (conf->rsne_override_eapol_set) {
@@ -5002,7 +4862,6 @@ done:
 	bin_clear_free(kde, kde_len);
 	os_free(wpa_ie_buf);
 	os_free(wpa_ie_buf2);
-	os_free(wpa_ie_buf3);
 }
 
 
@@ -5616,38 +5475,11 @@ static void wpa_group_gtk_init(struct wpa_authenticator *wpa_auth,
 
 static int wpa_group_update_sta(struct wpa_state_machine *sm, void *ctx)
 {
-	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
-	struct wpa_group *group = sm->group;
-#ifdef CONFIG_IEEE80211BE
-	int link_id;
-
-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		if (!sm->mld_links[link_id].valid)
-			continue;
-		if (sm->mld_links[link_id].wpa_auth &&
-		    sm->mld_links[link_id].wpa_auth->group == ctx) {
-			group = sm->mld_links[link_id].wpa_auth->group;
-			wpa_auth = sm->mld_links[link_id].wpa_auth;
-			break;
-		}
-	}
-#endif /* CONFIG_IEEE80211BE */
-
-	if (ctx && ctx != group)
+	if (ctx != NULL && ctx != sm->group)
 		return 0;
-
-#ifdef CONFIG_IEEE80211BE
-	/* For ML STA, run rekey on the association link and send G1 with keys
-	 * for all links. This is based on assumption that MLD level
-	 * Authenticator updates group keys on all affiliated links in one shot
-	 * and not independently or concurrently for separate links. */
-	if (sm->mld_assoc_link_id >= 0 &&
-	    sm->mld_assoc_link_id != wpa_auth->link_id)
-		return 0;
-#endif /* CONFIG_IEEE80211BE */
 
 	if (sm->wpa_ptk_state != WPA_PTK_PTKINITDONE) {
-		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+		wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm),
 				LOGGER_DEBUG,
 				"Not in PTKINITDONE; skip Group Key update");
 		sm->GUpdateStationKeys = false;
@@ -5659,7 +5491,7 @@ static int wpa_group_update_sta(struct wpa_state_machine *sm, void *ctx)
 		 * Since we clear the GKeyDoneStations before the loop, the
 		 * station needs to be counted here anyway.
 		 */
-		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+		wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm),
 				LOGGER_DEBUG,
 				"GUpdateStationKeys was already set when marking station for GTK rekeying");
 	}
@@ -5669,11 +5501,6 @@ static int wpa_group_update_sta(struct wpa_state_machine *sm, void *ctx)
 		return 0;
 
 	sm->group->GKeyDoneStations++;
-#ifdef CONFIG_IEEE80211BE
-	for_each_sm_auth(sm, link_id)
-		sm->mld_links[link_id].wpa_auth->group->GKeyDoneStations++;
-#endif /* CONFIG_IEEE80211BE */
-
 	sm->GUpdateStationKeys = true;
 
 	wpa_sm_step(sm);
@@ -6983,30 +6810,6 @@ void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg)
 {
 	if (sm)
 		sm->auth_alg = auth_alg;
-}
-
-
-void wpa_auth_set_rsn_selection(struct wpa_state_machine *sm, const u8 *ie,
-				size_t len)
-{
-	if (!sm)
-		return;
-	os_free(sm->rsn_selection);
-	sm->rsn_selection = NULL;
-	sm->rsn_selection_len = 0;
-	sm->rsn_override = false;
-	sm->rsn_override_2 = false;
-	if (ie) {
-		if (len >=  1) {
-			if (ie[0] == RSN_SELECTION_RSNE_OVERRIDE)
-				sm->rsn_override = true;
-			else if (ie[0] == RSN_SELECTION_RSNE_OVERRIDE_2)
-				sm->rsn_override_2 = true;
-		}
-		sm->rsn_selection = os_memdup(ie, len);
-		if (sm->rsn_selection)
-			sm->rsn_selection_len = len;
-	}
 }
 
 

@@ -1139,12 +1139,6 @@ int dpp_configuration_valid(const struct dpp_configuration *conf)
 		return 0;
 	if (dpp_akm_psk(conf->akm) && !conf->passphrase && !conf->psk_set)
 		return 0;
-	if (dpp_akm_psk(conf->akm) && conf->passphrase) {
-		size_t len = os_strlen(conf->passphrase);
-
-		if (len > 63 || len < 8)
-			return 0;
-	}
 	if (dpp_akm_sae(conf->akm) && !conf->passphrase)
 		return 0;
 	return 1;
@@ -1234,6 +1228,8 @@ static int dpp_configuration_parse_helper(struct dpp_authentication *auth,
 		end = os_strchr(pos, ' ');
 		pass_len = end ? (size_t) (end - pos) : os_strlen(pos);
 		pass_len /= 2;
+		if (pass_len > 63 || pass_len < 8)
+			goto fail;
 		conf->passphrase = os_zalloc(pass_len + 1);
 		if (!conf->passphrase ||
 		    hexstr2bin(pos, (u8 *) conf->passphrase, pass_len) < 0)
@@ -2565,12 +2561,8 @@ static int dpp_parse_cred_legacy(struct dpp_config_obj *conf,
 
 		wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: Legacy passphrase",
 				      pass->string, len);
-		if (dpp_akm_psk(conf->akm) && (len < 8 || len > 63)) {
-			wpa_printf(MSG_DEBUG,
-				   "DPP: Unexpected pass length %zu for a config object that includes PSK",
-				   len);
+		if (len < 8 || len > 63)
 			return -1;
-		}
 		os_strlcpy(conf->passphrase, pass->string,
 			   sizeof(conf->passphrase));
 	} else if (psk_hex && psk_hex->type == JSON_STRING) {

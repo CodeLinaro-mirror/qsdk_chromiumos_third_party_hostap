@@ -1475,16 +1475,11 @@ static struct wpa_ssid * wpas_dpp_add_network(struct wpa_supplicant *wpa_s,
 			ssid->ieee80211w = MGMT_FRAME_PROTECTION_OPTIONAL;
 		else
 			ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
-		if (conf->passphrase[0] && dpp_akm_psk(conf->akm)) {
+		if (conf->passphrase[0]) {
 			if (wpa_config_set_quoted(ssid, "psk",
 						  conf->passphrase) < 0)
 				goto fail;
 			wpa_config_update_psk(ssid);
-			ssid->export_keys = 1;
-		} else if (conf->passphrase[0] && dpp_akm_sae(conf->akm)) {
-			if (wpa_config_set_quoted(ssid, "sae_password",
-						  conf->passphrase) < 0)
-				goto fail;
 			ssid->export_keys = 1;
 		} else {
 			ssid->psk_set = conf->psk_set;
@@ -4512,7 +4507,7 @@ int wpas_dpp_check_connect(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 
 	if (!(ssid->key_mgmt & WPA_KEY_MGMT_DPP) || !bss)
 		return 0; /* Not using DPP AKM - continue */
-	rsn = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+	rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 	if (rsn && wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ied) == 0 &&
 	    !(ied.key_mgmt & WPA_KEY_MGMT_DPP))
 		return 0; /* AP does not support DPP AKM - continue */
