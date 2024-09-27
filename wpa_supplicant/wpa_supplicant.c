@@ -5048,7 +5048,12 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 
 	struct wpa_ssid *other_ssid;
 	int disconnected = 0;
+	int i;
 	bool request_new_scan = false;
+	bool ssid_scanned = false;
+	const char *current_ssid_name;
+	const char *prev_ssid_name;
+
 
 	if (ssid && ssid != wpa_s->current_ssid && wpa_s->current_ssid) {
 		if (wpa_s->wpa_state >= WPA_AUTHENTICATING)
@@ -5094,11 +5099,36 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 			(ssid->mode == WPAS_MODE_MESH ||
 			 ssid->mode == WPAS_MODE_AP) ? ssid : NULL;
 
-		if (ssid->scan_ssid &&
-		    (wpa_s->no_suitable_network || wpa_s->last_scan_external)) {
-			wpa_printf(MSG_DEBUG,
-				   "Request a new scan for hidden network");
-			request_new_scan = true;
+		if (ssid->scan_ssid) {
+			/* Check if the previous scan included the selected network */
+			if (wpa_s->last_scan_num_ssids > 1) {
+				current_ssid_name = wpa_ssid_txt(ssid->ssid, ssid->ssid_len);
+				ssid_scanned = false;
+				/* Iterate through the previous scan SSIDs */
+				for (i = 0; i < wpa_s->last_scan_num_ssids; i++) {
+					prev_ssid_name = wpa_ssid_txt(
+						wpa_s->last_scan_ssids[i].ssid,
+						wpa_s->last_scan_ssids[i].ssid_len);
+					if (os_strcmp(current_ssid_name, prev_ssid_name) == 0) {
+						ssid_scanned = true;
+						break;
+					}
+				}
+				if (!ssid_scanned) {
+					/* SSID not found in previous scan, request a new scan */
+					request_new_scan = true;
+				}
+			} else {
+				/* No previous scan or wildcard scan, request a new scan */
+				request_new_scan = true;
+			}
+
+			if (request_new_scan) {
+				wpa_printf(MSG_DEBUG, "Request a new scan for hidden network");
+			} else {
+				wpa_printf(MSG_DEBUG,
+					   "Hidden network was scanned for in last scan");
+			}
 		} else if ((ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
 			   !ssid->owe_only) {
 			wpa_printf(MSG_DEBUG,

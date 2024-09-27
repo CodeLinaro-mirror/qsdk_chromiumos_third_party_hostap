@@ -2724,6 +2724,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	int ap = 0;
 	bool trigger_6ghz_scan;
 	bool short_ssid_match_found = false;
+	size_t idx;
 #ifndef CONFIG_NO_RANDOM_POOL
 	size_t i, num;
 #endif /* CONFIG_NO_RANDOM_POOL */
@@ -2789,7 +2790,23 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	}
 #endif /* CONFIG_NO_RANDOM_POOL */
 
-	wpa_s->last_scan_external = data && data->scan_info.external_scan;
+	if (data) {
+		wpa_s->last_scan_external = data->scan_info.external_scan;
+		wpa_s->last_scan_num_ssids = data->scan_info.num_ssids;
+		for (idx = 0; idx < wpa_s->last_scan_num_ssids; idx++) {
+			/* Copy the SSID and its length */
+			if (data->scan_info.ssids[idx].ssid_len > SSID_MAX_LEN)
+				continue;
+
+			os_memcpy(wpa_s->last_scan_ssids[idx].ssid,
+				   data->scan_info.ssids[idx].ssid,
+				   data->scan_info.ssids[idx].ssid_len);
+			wpa_s->last_scan_ssids[idx].ssid[data->scan_info.ssids[idx].ssid_len] =
+				   '\0';
+			wpa_s->last_scan_ssids[idx].ssid_len =
+				   data->scan_info.ssids[idx].ssid_len;
+		}
+	}
 
 	if (update_only) {
 		ret = 1;
