@@ -175,6 +175,10 @@ struct tls_config {
  *	response list (OCSPResponseList for ocsp_multi in RFC 6961) or %NULL if
  *	ocsp_multi is not enabled
  * @check_cert_subject: Client certificate subject name matching string
+ * @use_ca_cert_experiment: Experiment's flag for the server certificate
+ *	verification using selected single CA certificate with a retry using
+ *	root CA certificates. 1 = experiment is active, %NULL = experiment is
+ *	not active.
  *
  * TLS connection parameters to be configured with tls_connection_set_params()
  * and tls_global_set_params().
@@ -219,6 +223,8 @@ struct tls_connection_params {
 	const char *ocsp_stapling_response;
 	const char *ocsp_stapling_response_multi;
 	const char *check_cert_subject;
+
+	unsigned int use_ca_cert_experiment;
 };
 
 

@@ -275,6 +275,18 @@ struct eap_peer_cert_config {
 	 * 2 = require valid OCSP stapling response
 	 */
 	int ocsp;
+
+	/**
+	 * use_ca_cert_experiment - Whether to use server's certificate
+	 * verification experiment
+	 *
+	 * This is used to enable an experiment for the server certificate
+	 * verification using a selected CA certificate and in case of
+	 * failure re-try verification with all root CA certificates.
+	 * 0 = experiment is not active
+	 * 1 = experiment is active
+	 */
+	int use_ca_cert_experiment;
 };
 
 /**

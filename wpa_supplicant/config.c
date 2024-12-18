@@ -2556,6 +2556,7 @@ static const struct parse_data ssid_fields[] = {
 	{ FUNC_KEY(machine_password) },
 	{ STRe(ca_cert, cert.ca_cert) },
 	{ STRe(ca_path, cert.ca_path) },
+	{ INTe(use_ca_cert_experiment, cert.use_ca_cert_experiment) },
 	{ STRe(client_cert, cert.client_cert) },
 	{ STRe(private_key, cert.private_key) },
 	{ STR_KEYe(private_key_passwd, cert.private_key_passwd) },

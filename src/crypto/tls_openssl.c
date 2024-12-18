@@ -248,7 +248,18 @@ struct tls_connection {
 #endif /* OPENSSL_NO_ENGINE */
 	char *subject_match, *altsubject_match, *suffix_match, *domain_match;
 	char *check_cert_subject;
+	char *ca_path;
+	char *ca_cert;
 	int read_alerts, write_alerts, failed;
+
+	/* Enable/Disable retry attempts for the server cert verification */
+	unsigned int use_ca_cert_experiment;
+	/* A boolean flag indicating that retry attempt for the server cert
+	 * verification is already used
+	 */
+	unsigned int use_ca_cert_retry;
+	/* A boolean flag for pre-retry server cert verification result */
+	unsigned int pre_ca_cert_retry_succ;
 
 	tls_session_ticket_cb session_ticket_cb;
 	void *session_ticket_cb_ctx;
@@ -1789,6 +1800,8 @@ void tls_connection_deinit(void *ssl_ctx, struct tls_connection *conn)
 	os_free(conn->suffix_match);
 	os_free(conn->domain_match);
 	os_free(conn->check_cert_subject);
+	os_free(conn->ca_path);
+	os_free(conn->ca_cert);
 	os_free(conn->session_ticket);
 	os_free(conn->peer_subject);
 	os_free(conn);
@@ -2592,6 +2605,53 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 
 	openssl_tls_cert_event(conn, err_cert, depth, buf);
 
+
+	/* ChromeOS: server certificate verification retry for b:317050923.
+	 * Changes are controlled by experiment
+	 * EnableSingleCACertVerificationPhase1 from ChromeOS side and applied
+	 * only on devices with not empty ONC settings for ca_cert and ca_path.
+	 */
+	if (!preverify_ok &&
+		err == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
+		conn->use_ca_cert_experiment &&
+		conn->use_ca_cert_retry) {
+		openssl_tls_fail_event(conn, err_cert, err, depth,
+			buf, "first verify failed", TLS_FAIL_UNSPECIFIED);
+
+		conn->use_ca_cert_retry = 0;
+		X509_STORE *ctx_x509_store =
+			SSL_CTX_get_cert_store(conn->ssl_ctx);
+		int reload_store_result = X509_STORE_load_locations(
+			ctx_x509_store, conn->ca_cert, conn->ca_path);
+		if (reload_store_result != 1) {
+			openssl_tls_fail_event(conn, err_cert, err, depth,
+				buf, "load rootCA failed",
+				TLS_FAIL_UNSPECIFIED);
+			tls_show_errors(MSG_WARNING, __func__,
+				"Failed to load root certificates");
+		} else {
+			wpa_printf(MSG_DEBUG,
+				"TLS: Trusted root certificate(s) loaded for retry");
+			X509_STORE_CTX_init(
+				x509_ctx, ctx_x509_store, err_cert, NULL);
+			X509_STORE_CTX_set_cert(x509_ctx, err_cert);
+			if (X509_STORE_CTX_verify(x509_ctx) != 1) {
+				wpa_printf(MSG_DEBUG,
+					"Server cert verification retry failed");
+				openssl_tls_fail_event(conn, err_cert, err,
+					depth, buf, "retry verify failed",
+					TLS_FAIL_UNSPECIFIED);
+			} else {
+				wpa_printf(MSG_DEBUG,
+					"Server cert verification retry success");
+				conn->pre_ca_cert_retry_succ = 1;
+				openssl_tls_fail_event(conn, err_cert, err,
+					depth, buf, "retry verify attempt",
+					TLS_FAIL_UNSPECIFIED);
+				return SSL_set_retry_verify(ssl);
+			}
+		}
+	}
 	if (!preverify_ok) {
 		if (depth > 0) {
 			/* Send cert event for the peer certificate so that
@@ -2619,6 +2679,13 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 			   depth, buf);
 		openssl_tls_fail_event(conn, err_cert, err, depth, buf,
 				       err_str, TLS_FAIL_UNSPECIFIED);
+
+		if (conn->use_ca_cert_experiment &&
+			conn->pre_ca_cert_retry_succ) {
+			conn->pre_ca_cert_retry_succ = 0;
+			openssl_tls_fail_event(conn, err_cert, err, depth, buf,
+				"after retry failed", TLS_FAIL_UNSPECIFIED);
+		}
 		return preverify_ok;
 	}
 
@@ -2781,7 +2848,8 @@ static int tls_load_ca_der(struct tls_data *data, const char *ca_cert)
 static int tls_connection_ca_cert(struct tls_data *data,
 				  struct tls_connection *conn,
 				  const char *ca_cert, const u8 *ca_cert_blob,
-				  size_t ca_cert_blob_len, const char *ca_path)
+				  size_t ca_cert_blob_len, const char *ca_path,
+				  const int use_ca_cert_experiment)
 {
 	SSL_CTX *ssl_ctx = data->ssl;
 	X509_STORE *store;
@@ -2937,6 +3005,23 @@ static int tls_connection_ca_cert(struct tls_data *data,
 
 	if (ca_cert || ca_path) {
 #ifndef OPENSSL_NO_STDIO
+		wpa_printf(MSG_DEBUG, "Server cert verification experiment "
+			"ca_cert: %s, ca_path: %s , experiment status: %d",
+			ca_cert, ca_path, use_ca_cert_experiment);
+
+		if (use_ca_cert_experiment && ca_cert && ca_path) {
+			wpa_printf(MSG_DEBUG,
+				"Server's cert verification retry is active");
+			conn->use_ca_cert_experiment = 1;
+			conn->use_ca_cert_retry = 1;
+			conn->pre_ca_cert_retry_succ = 0;
+			conn->ca_path = os_strdup(ca_path);
+			conn->ca_cert = os_strdup(ca_cert);
+			// ca_path is stored and will be loaded in case of the
+			// first server's certificate verification has failed.
+			ca_path = NULL;
+		}
+
 		if (SSL_CTX_load_verify_locations(ssl_ctx, ca_cert, ca_path) !=
 		    1) {
 			tls_show_errors(MSG_WARNING, __func__,
@@ -4526,6 +4611,12 @@ openssl_handshake(struct tls_connection *conn, const struct wpabuf *in_data)
 		else if (err == SSL_ERROR_WANT_WRITE)
 			wpa_printf(MSG_DEBUG, "SSL: SSL_connect - want to "
 				   "write");
+		else if (conn->use_ca_cert_experiment &&
+			err == SSL_ERROR_WANT_RETRY_VERIFY) {
+			wpa_printf(MSG_DEBUG,
+				"SSL: SSL_connect - want to retry verify");
+			SSL_connect(conn->ssl);
+		}
 		else {
 			unsigned long error = ERR_peek_last_error();
 
@@ -5442,7 +5533,8 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 	} else if (tls_connection_ca_cert(data, conn, params->ca_cert,
 					  params->ca_cert_blob,
 					  params->ca_cert_blob_len,
-					  params->ca_path))
+					  params->ca_path,
+					  params->use_ca_cert_experiment))
 		return -1;
 
 	if (engine_id && cert_id) {

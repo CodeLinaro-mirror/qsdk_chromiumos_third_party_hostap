@@ -750,6 +750,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INTe(engine, cert.engine);
 	INTe(engine2, phase2_cert.engine);
 	INTe(machine_engine, machine_cert.engine);
+	INTe(use_ca_cert_experiment, cert.use_ca_cert_experiment);
 	INT_DEF(eapol_flags, DEFAULT_EAPOL_FLAGS);
 	STR(openssl_ciphers);
 	INTe(erp, erp);
