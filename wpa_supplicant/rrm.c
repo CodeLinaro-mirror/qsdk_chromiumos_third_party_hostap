@@ -1343,6 +1343,11 @@ wpas_rrm_handle_msr_req_element(
 						 duration_mandatory,
 						 (const void *) req->variable,
 						 req->len - 3, buf);
+#ifdef CHROMIUM
+	case MEASURE_TYPE_TRANSMIT_STREAM:
+		/* Not supported at this time; silently ignoring this RRM measurement type */
+		break;
+#endif /* CHROMIUM */
 	default:
 		wpa_printf(MSG_INFO,
 			   "RRM: Unsupported radio measurement type %u",
