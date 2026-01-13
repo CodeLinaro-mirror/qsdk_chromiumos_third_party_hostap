@@ -4581,6 +4581,16 @@ enum qca_wlan_vendor_attr_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_CRYPTO_TEST_MODE_ENABLE = 149,
 
+	/* 8-bit unsigned value to enable or disable TWT concurrency.
+	 * 1 - Enable, 0 - Disable.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_CONCURRENCY_ENABLE = 150,
+
+	/* 8-bit unsigned value to allow Broadcast TWT ID0.
+	 * 1 - Allow, 0 - Disallow.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_BTWT_ID0 = 151,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
