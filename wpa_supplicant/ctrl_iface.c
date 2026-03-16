@@ -13361,6 +13361,7 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 	int ret = -1;
 	enum nan_service_protocol_type srv_proto_type = 0;
 	int *freq_list = NULL;
+	int *cipher_list = NULL;
 	bool p2p = false;
 	u8 forced_addr[ETH_ALEN];
 	u8 *pairing_setup_info = NULL;
@@ -13521,6 +13522,20 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strncmp(token, "cipher_suites=", 14) == 0) {
+			char *pos = token + 14;
+
+			while (pos && pos[0]) {
+				int_array_add_unique(&cipher_list, atoi(pos));
+				pos = os_strchr(pos, ',');
+				if (pos)
+					pos++;
+			}
+
+			params.cipher_suites_list = cipher_list;
+			continue;
+		}
+
 		wpa_printf(MSG_INFO,
 			   "CTRL: Invalid NAN_SUBSCRIBE parameter: %s",
 			   token);
@@ -13535,6 +13550,7 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 fail:
 	wpabuf_free(ssi);
 	os_free(freq_list);
+	os_free(cipher_list);
 	os_free(pairing_setup_info);
 	return ret;
 }

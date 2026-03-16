@@ -714,7 +714,7 @@ static size_t nan_de_sdf_attrs_put(struct wpabuf *buf, struct nan_de *de,
 	len += attrs ? wpabuf_len(attrs) : 0;
 
 	/* Cipher Suite Information Attribute */
-	if (srv->type == NAN_DE_PUBLISH && srv->cipher_suites_list) {
+	if (srv->cipher_suites_list) {
 		len += NAN_ATTR_HDR_LEN + sizeof(struct nan_cipher_suite_info) +
 			cs_num * sizeof(struct nan_cipher_suite);
 	}
@@ -836,7 +836,7 @@ static size_t nan_de_sdf_attrs_put(struct wpabuf *buf, struct nan_de *de,
 		wpabuf_put_buf(buf, attrs);
 	}
 
-	if (srv->type == NAN_DE_PUBLISH && srv->cipher_suites_list) {
+	if (srv->cipher_suites_list) {
 		size_t i;
 
 		wpabuf_put_u8(buf, NAN_ATTR_CSIA);
@@ -3577,6 +3577,11 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		wpa_printf(MSG_DEBUG, "NAN: Using source address " MACSTR
 			   " for subscribe service", MAC2STR(srv->forced_addr));
 	}
+
+	if (nan_de_set_cs_list(srv, params->cipher_suites_list) < 0)
+		goto fail;
+
+	dl_list_init(&srv->pmkid_list);
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",
 		   subscribe_id, service_name ? service_name : "Ranging");

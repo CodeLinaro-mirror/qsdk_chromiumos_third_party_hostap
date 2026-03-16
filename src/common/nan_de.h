@@ -310,6 +310,9 @@ struct nan_subscribe_params {
 	u8 *pairing_setup_info;
 	u16 pairing_setup_info_len;
 
+	/* int_array of cipher suites */
+	const int *cipher_suites_list;
+
 	/* Randomize service ID for NAN services */
 	bool randomize_service_id;
 
