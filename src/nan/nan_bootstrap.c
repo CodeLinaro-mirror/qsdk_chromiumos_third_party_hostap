@@ -159,6 +159,41 @@ static struct wpabuf * nan_bootstrap_build_pbea(struct nan_data *nan,
 }
 
 
+/*
+ * nan_bootstrap_build_auth_npba - Build NPBA for PASN M2 auth frame
+ *
+ * Per Wi-Fi Aware spec v4.0, section 7.6.4.2, the NPBA in PASN M2 shall be the
+ * same as that included in the SDF transmitted by the pairing responder:
+ * Type=ADVERTISE(0) and Status=ACCEPTED(0).
+ *
+ * @pbm: Full service PBM to advertise (from get_supported_bootstrap_methods)
+ * Returns: Allocated wpabuf with NPBA or NULL on failure
+ */
+static struct wpabuf * nan_bootstrap_build_auth_npba(u16 pbm)
+{
+	u8 type_and_status = NAN_PBA_TYPE_ADVERTISE |
+		(NAN_PBA_STATUS_ACCEPTED << NAN_PBA_STATUS_POS);
+	struct wpabuf *buf;
+
+	buf = wpabuf_alloc(8);
+	if (!buf)
+		return NULL;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Bootstrap: Build auth NPBA type=Advertise status=Accepted pbm=0x%04x",
+		   pbm);
+
+	wpabuf_put_u8(buf, NAN_ATTR_NPBA);
+	wpabuf_put_le16(buf, 5);
+	wpabuf_put_u8(buf, 0);        /* dialog token = 0 for Advertise */
+	wpabuf_put_u8(buf, type_and_status);
+	wpabuf_put_u8(buf, NAN_REASON_RESERVED);
+	wpabuf_put_le16(buf, pbm);
+
+	return buf;
+}
+
+
 /**
  * nan_bootstrap_timeout - Bootstrap timeout handler
  * @eloop_data: NAN module context from nan_init()
@@ -251,7 +286,8 @@ static void nan_bootstrap_handle_rx_request(struct nan_data *nan,
 {
 	struct wpabuf *attr = NULL;
 	struct wpabuf *pbea;
-	u16 supported_methods;
+	u16 supported_methods = 0;
+	u16 auth_npba_pbm = 0; /* full service PBM for PASN M2 NPBA */
 
 	wpa_printf(MSG_DEBUG, "NAN: Bootstrap: RX request");
 
@@ -296,6 +332,13 @@ static void nan_bootstrap_handle_rx_request(struct nan_data *nan,
 			peer->bootstrap.reason_code = 0;
 			peer->bootstrap.comeback_required = false;
 			peer->bootstrap.requested_pbm = nan_complement_pbm(pbm);
+			/*
+			 * Fetch the full service PBM for the PASN M2 NPBA. The
+			 * comeback path skips the first-request fetch below.
+			 */
+			auth_npba_pbm =
+				nan->cfg->get_supported_bootstrap_methods(
+					nan->cfg->cb_ctx, handle);
 		}
 
 		goto send_response;
@@ -315,6 +358,7 @@ static void nan_bootstrap_handle_rx_request(struct nan_data *nan,
 	supported_methods =
 		nan->cfg->get_supported_bootstrap_methods(nan->cfg->cb_ctx,
 							  handle);
+	auth_npba_pbm = supported_methods;
 
 	if (!(supported_methods & peer->bootstrap.requested_pbm)) {
 		wpa_printf(MSG_DEBUG,
@@ -413,15 +457,18 @@ send_response:
 
 	if (peer->bootstrap.status == NAN_PBA_STATUS_ACCEPTED) {
 		wpabuf_free(peer->bootstrap.npba);
-		peer->bootstrap.npba = wpabuf_alloc(3 + npba_len);
-		if (peer->bootstrap.npba) {
-			wpabuf_put_u8(peer->bootstrap.npba, NAN_ATTR_NPBA);
-			wpabuf_put_le16(peer->bootstrap.npba, npba_len);
-			wpabuf_put_data(peer->bootstrap.npba, npba, npba_len);
-		} else {
-			wpa_printf(MSG_INFO,
-				   "NAN: Bootstrap: Failed to store NPBA");
-		}
+		/*
+		 * Build the NPBA for PASN M2 per Wi-Fi Aware spec v4.0,
+		 * section 7.6.4.2.
+		 * The NPBA shall match the SDF: use the full service PBM
+		 * (auth_npba_pbm), not requested_pbm which is the single
+		 * method selected during bootstrapping.
+		 */
+		peer->bootstrap.npba =
+			nan_bootstrap_build_auth_npba(auth_npba_pbm);
+		if (!peer->bootstrap.npba)
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Bootstrap: Failed to store auth NPBA");
 	}
 
 	nan->cfg->bootstrap_completed(nan->cfg->cb_ctx,
