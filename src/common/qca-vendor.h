@@ -11933,6 +11933,19 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_WARMUP_TIMER = 86,
 
+	/* 16-bit unsigned value specifying the delay, in milliseconds,
+	 * after DFS radar detection by the ANDC device before sending
+	 * the updated NAN Availability attribute to the ANDP peer.
+	 *
+	 * Upon DFS channel evacuation, a non-zero value delays the NAN
+	 * Availability update and Schedule Update Notification by the
+	 * configured time. A value of 0 (default) sends the update
+	 * immediately.
+	 *
+	 * This attribute is intended for testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_DELAY_AVAIL_UPDATE = 87,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
