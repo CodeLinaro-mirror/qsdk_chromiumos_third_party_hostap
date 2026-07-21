@@ -54,6 +54,7 @@ struct rsn_pmksa_cache_entry {
 	 * PMKSA for SAE.
 	 */
 	bool sae_reauth_scheduled;
+	u16 auth_alg;
 };
 
 struct rsn_pmksa_cache;
@@ -84,10 +85,16 @@ struct rsn_pmksa_cache_entry *
 pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		const u8 *pmkid, const u8 *kck, size_t kck_len,
 		const u8 *aa, const u8 *spa, void *network_ctx, int akmp,
-		const u8 *cache_id);
+		const u8 *cache_id, u16 auth_alg);
 struct rsn_pmksa_cache_entry *
 pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 		      struct rsn_pmksa_cache_entry *entry);
+struct rsn_pmksa_cache_entry *
+pmksa_cache_clone_entry(struct rsn_pmksa_cache *pmksa,
+			const struct rsn_pmksa_cache_entry *old_entry,
+			const u8 *aa);
+void pmksa_cache_derive_pmkid(const struct rsn_pmksa_cache_entry *entry,
+			      const u8 *aa, const u8 *spa, u8 *pmkid);
 struct rsn_pmksa_cache_entry * pmksa_cache_get_current(struct wpa_sm *sm);
 void pmksa_cache_clear_current(struct wpa_sm *sm);
 int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
@@ -98,7 +105,8 @@ struct rsn_pmksa_cache_entry *
 pmksa_cache_get_opportunistic(struct rsn_pmksa_cache *pmksa,
 			      void *network_ctx, const u8 *aa, int akmp);
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len, bool external_only);
+		       const u8 *pmk, size_t pmk_len, bool external_only,
+		       const u8 *addr);
 void pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
 			struct rsn_pmksa_cache_entry *entry);
 void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa);

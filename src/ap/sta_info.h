@@ -20,34 +20,37 @@
 #include "hostapd.h"
 
 /* STA flags */
-#define WLAN_STA_AUTH BIT(0)
-#define WLAN_STA_ASSOC BIT(1)
-#define WLAN_STA_AUTHORIZED BIT(5)
-#define WLAN_STA_PENDING_POLL BIT(6) /* pending activity poll not ACKed */
-#define WLAN_STA_SHORT_PREAMBLE BIT(7)
-#define WLAN_STA_PREAUTH BIT(8)
-#define WLAN_STA_WMM BIT(9)
-#define WLAN_STA_MFP BIT(10)
-#define WLAN_STA_HT BIT(11)
-#define WLAN_STA_WPS BIT(12)
-#define WLAN_STA_MAYBE_WPS BIT(13)
-#define WLAN_STA_WDS BIT(14)
-#define WLAN_STA_ASSOC_REQ_OK BIT(15)
-#define WLAN_STA_WPS2 BIT(16)
-#define WLAN_STA_GAS BIT(17)
-#define WLAN_STA_VHT BIT(18)
-#define WLAN_STA_WNM_SLEEP_MODE BIT(19)
-#define WLAN_STA_VHT_OPMODE_ENABLED BIT(20)
-#define WLAN_STA_VENDOR_VHT BIT(21)
-#define WLAN_STA_PENDING_FILS_ERP BIT(22)
-#define WLAN_STA_MULTI_AP BIT(23)
-#define WLAN_STA_HE BIT(24)
-#define WLAN_STA_6GHZ BIT(25)
-#define WLAN_STA_PENDING_PASN_FILS_ERP BIT(26)
-#define WLAN_STA_EHT BIT(27)
-#define WLAN_STA_PENDING_DISASSOC_CB BIT(29)
-#define WLAN_STA_PENDING_DEAUTH_CB BIT(30)
-#define WLAN_STA_NONERP BIT(31)
+#define WLAN_STA_AUTH BIT_ULL(0)
+#define WLAN_STA_ASSOC BIT_ULL(1)
+#define WLAN_STA_SPP_AMSDU BIT_ULL(2)
+#define WLAN_STA_AUTHORIZED BIT_ULL(5)
+#define WLAN_STA_PENDING_POLL BIT_ULL(6) /* pending activity poll not ACKed */
+#define WLAN_STA_SHORT_PREAMBLE BIT_ULL(7)
+#define WLAN_STA_PREAUTH BIT_ULL(8)
+#define WLAN_STA_WMM BIT_ULL(9)
+#define WLAN_STA_MFP BIT_ULL(10)
+#define WLAN_STA_HT BIT_ULL(11)
+#define WLAN_STA_WPS BIT_ULL(12)
+#define WLAN_STA_MAYBE_WPS BIT_ULL(13)
+#define WLAN_STA_WDS BIT_ULL(14)
+#define WLAN_STA_ASSOC_REQ_OK BIT_ULL(15)
+#define WLAN_STA_WPS2 BIT_ULL(16)
+#define WLAN_STA_GAS BIT_ULL(17)
+#define WLAN_STA_VHT BIT_ULL(18)
+#define WLAN_STA_WNM_SLEEP_MODE BIT_ULL(19)
+#define WLAN_STA_VHT_OPMODE_ENABLED BIT_ULL(20)
+#define WLAN_STA_VENDOR_VHT BIT_ULL(21)
+#define WLAN_STA_PENDING_FILS_ERP BIT_ULL(22)
+#define WLAN_STA_MULTI_AP BIT_ULL(23)
+#define WLAN_STA_HE BIT_ULL(24)
+#define WLAN_STA_6GHZ BIT_ULL(25)
+#define WLAN_STA_PENDING_PASN_FILS_ERP BIT_ULL(26)
+#define WLAN_STA_EHT BIT_ULL(27)
+#define WLAN_STA_DSCP_POLICY BIT_ULL(28)
+#define WLAN_STA_PENDING_DISASSOC_CB BIT_ULL(29)
+#define WLAN_STA_PENDING_DEAUTH_CB BIT_ULL(30)
+#define WLAN_STA_NONERP BIT_ULL(31)
+#define WLAN_STA_UHR BIT_ULL(32)
 
 /* Maximum number of supported rates (from both Supported Rates and Extended
  * Supported Rates IEs). */
@@ -70,6 +73,25 @@ struct pending_eapol_rx {
 	enum frame_encryption encrypted;
 };
 
+struct eap_over_auth_data {
+	int akm;
+	int cipher;
+	u16 group;
+	u16 auth_transaction;
+	u8 snonce[WPA_NONCE_LEN];
+	u8 anonce[WPA_NONCE_LEN];
+	u8 *rsnxe;
+	u8 pmk[PMK_LEN_MAX];
+	size_t pmk_len;
+	struct wpa_ptk ptk;
+	size_t rsnxe_len;
+	struct crypto_ecdh *ecdh;
+	struct wpabuf *dhss;
+	bool add_mic;
+	u8 epp_pmkid_cur[PMKID_LEN];
+	u8 epp_pmkid_next[PMKID_LEN];
+};
+
 #define EHT_ML_MAX_STA_PROF_LEN 1024
 struct mld_info {
 	bool mld_sta;
@@ -84,6 +106,12 @@ struct mld_info {
 	struct mld_link_info links[MAX_NUM_MLD_LINKS];
 };
 
+struct dscp_policy_state {
+	size_t offset;
+	u8 last_dialog_token;
+	bool pending_more;
+};
+
 struct sta_info {
 	struct sta_info *next; /* next entry in sta list */
 	struct sta_info *hnext; /* next entry in hash table list */
@@ -92,12 +120,22 @@ struct sta_info {
 	struct dl_list ip6addr; /* list head for struct ip6addr */
 	u16 aid; /* STA's unique AID (1 .. 2007) or 0 if not yet assigned */
 	u16 disconnect_reason_code; /* RADIUS server override */
-	u32 flags; /* Bitfield of WLAN_STA_* */
+	unsigned long long flags; /* Bitfield of WLAN_STA_* */
 	u16 capability;
 	u16 listen_interval; /* or beacon_int for APs */
 	u8 supported_rates[WLAN_SUPP_RATES_MAX];
 	int supported_rates_len;
 	u8 qosinfo; /* Valid when WLAN_STA_WMM is set */
+#ifdef CONFIG_ENC_ASSOC
+	bool epp_sta; /* Indicates if the station is an EPP peer */
+#endif /* CONFIG_ENC_ASSOC */
+#ifdef CONFIG_PMKSA_PRIVACY
+	u8 snonce[NONCE_LEN]; /* SNonce to compute next PMKID if
+			       * PMKID caching privacy is on */
+	u8 anonce[NONCE_LEN]; /* ANonce to compute next PMKID if
+			       * PMKID caching privacy is on */
+	u8 epp_pmkid_next[PMKID_LEN];
+#endif /* CONFIG_PMKSA_PRIVACY */
 
 #ifdef CONFIG_MESH
 	enum mesh_plink_state plink_state;
@@ -131,7 +169,6 @@ struct sta_info {
 	unsigned int ht_20mhz_set:1;
 	unsigned int no_p2p_set:1;
 	unsigned int qos_map_enabled:1;
-	unsigned int remediation:1;
 	unsigned int hs20_deauth_requested:1;
 	unsigned int hs20_deauth_on_ack:1;
 	unsigned int session_timeout_set:1;
@@ -197,6 +234,8 @@ struct sta_info {
 	struct ieee80211_he_6ghz_band_cap *he_6ghz_capab;
 	struct ieee80211_eht_capabilities *eht_capab;
 	size_t eht_capab_len;
+	struct ieee80211_uhr_capabilities *uhr_capab;
+	size_t uhr_capab_len;
 
 	int sa_query_count; /* number of pending SA Query requests;
 			     * 0 = no SA Query in progress */
@@ -217,8 +256,6 @@ struct sta_info {
 	struct wpabuf *hs20_ie; /* HS 2.0 IE from (Re)Association Request */
 	/* Hotspot 2.0 Roaming Consortium from (Re)Association Request */
 	struct wpabuf *roaming_consortium;
-	u8 remediation_method;
-	char *remediation_url; /* HS 2.0 Subscription Remediation Server URL */
 	char *t_c_url; /* HS 2.0 Terms and Conditions Server URL */
 	struct wpabuf *hs20_deauth_req;
 	char *hs20_session_info_url;
@@ -264,7 +301,7 @@ struct sta_info {
 #endif /* CONFIG_TAXONOMY */
 
 #ifdef CONFIG_FILS
-	u8 fils_snonce[FILS_NONCE_LEN];
+	u8 fils_snonce[NONCE_LEN];
 	u8 fils_session[FILS_SESSION_LEN];
 	u8 fils_erp_pmkid[PMKID_LEN];
 	u8 *fils_pending_assoc_req;
@@ -318,10 +355,28 @@ struct sta_info {
 #ifdef CONFIG_IEEE80211BE
 	struct mld_info mld_info;
 	u8 mld_assoc_link_id;
+	struct link_reconf_req_list *reconf_req;
 #endif /* CONFIG_IEEE80211BE */
 
 	u16 max_idle_period; /* if nonzero, the granted BSS max idle period in
 			      * units of 1000 TUs */
+
+	u64 last_known_sta_id_timestamp;
+
+	struct wpabuf *sae_pw_id;
+	unsigned int sae_pw_id_counter;
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	struct eap_over_auth_data eap_auth_data;
+#endif /* CONFIG_IEEE8021X_AUTH */
+
+#ifdef CONFIG_ROBUST_AV
+	struct hostapd_dscp_policy **policies;
+	unsigned int num_dscp_policies;
+	bool dscp_reset;
+	u8 unsolicited_dialog_token;
+	struct dscp_policy_state dscp_state;
+#endif /* CONFIG_ROBUST_AV */
 };
 
 
@@ -346,6 +401,8 @@ int ap_for_each_sta(struct hostapd_data *hapd,
 			      void *ctx),
 		    void *ctx);
 struct sta_info * ap_get_sta(struct hostapd_data *hapd, const u8 *sta);
+struct sta_info * ap_get_link_sta(struct hostapd_data *hapd,
+				  const u8 *link_addr);
 struct sta_info * ap_get_sta_p2p(struct hostapd_data *hapd, const u8 *addr);
 void ap_sta_hash_add(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta);
@@ -374,6 +431,8 @@ int ap_sta_set_vlan(struct hostapd_data *hapd, struct sta_info *sta,
 		    struct vlan_description *vlan_desc);
 void ap_sta_start_sa_query(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_sta_stop_sa_query(struct hostapd_data *hapd, struct sta_info *sta);
+void ap_sta_set_sa_query_timeout(struct hostapd_data *hapd,
+				 struct sta_info *sta, int value);
 int ap_check_sa_query_timeout(struct hostapd_data *hapd, struct sta_info *sta);
 const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
 				  struct sta_info *sta);
@@ -386,7 +445,7 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
 				int authorized);
 void ap_sta_set_authorized_event(struct hostapd_data *hapd,
 				 struct sta_info *sta, int authorized);
-void ap_sta_set_authorized(struct hostapd_data *hapd,
+bool ap_sta_set_authorized(struct hostapd_data *hapd,
 			   struct sta_info *sta, int authorized);
 static inline int ap_sta_is_authorized(struct sta_info *sta)
 {
@@ -397,8 +456,10 @@ void ap_sta_deauth_cb(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_sta_disassoc_cb(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_sta_clear_disconnect_timeouts(struct hostapd_data *hapd,
 				      struct sta_info *sta);
+void ap_sta_clear_assoc_timeout(struct hostapd_data *hapd,
+				struct sta_info *sta);
 
-int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen);
+int ap_sta_flags_txt(unsigned long long flags, char *buf, size_t buflen);
 void ap_sta_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
 					    struct sta_info *sta,
 					    unsigned timeout);
@@ -429,5 +490,32 @@ static inline void ap_sta_set_mld(struct sta_info *sta, bool mld)
 void ap_sta_free_sta_profile(struct mld_info *info);
 
 void hostapd_free_link_stas(struct hostapd_data *hapd);
+void set_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+				      struct sta_info *psta, void *wpa_sm);
+void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+					struct sta_info *psta);
+void clear_wpa_sm_for_all_sta(struct hostapd_data *hapd,
+			      struct wpa_state_machine *wpa_sm);
 
+static inline bool ap_sta_is_epp(const struct sta_info *sta)
+{
+#ifdef CONFIG_ENC_ASSOC
+	return sta && sta->epp_sta;
+#else /* CONFIG_ENC_ASSOC */
+	return false;
+#endif /* CONFIG_ENC_ASSOC */
+}
+
+static inline bool ap_sta_support_enc_assoc(struct hostapd_data *hapd,
+					    const u8 *rsnxe, size_t rsnxe_len)
+{
+#ifdef CONFIG_ENC_ASSOC
+		return (hapd->conf->assoc_frame_encryption &&
+			ieee802_11_rsnx_capab_len(rsnxe,
+						  rsnxe_len,
+						  WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION));
+#else /* CONFIG_ENC_ASSOC */
+	return false;
+#endif /* CONFIG_ENC_ASSOC */
+}
 #endif /* STA_INFO_H */

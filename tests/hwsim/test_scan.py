@@ -473,7 +473,7 @@ def test_scan_for_auth_wep(dev, apdev):
 def test_scan_hidden(dev, apdev):
     """Control interface behavior on scan parameters"""
     dev[0].flush_scan_cache()
-    ssid = "test-scan"
+    ssid = "test-hidden-scan"
     wrong_ssid = "wrong"
     hapd = hostapd.add_ap(apdev[0], {"ssid": ssid,
                                      "ignore_broadcast_ssid": "1"})
@@ -496,17 +496,17 @@ def test_scan_hidden(dev, apdev):
         check_scan(dev[0], "freq=2412 use_id=1")
     finally:
         dev[0].request("VENDOR_ELEM_REMOVE 14 *")
-    if "test-scan" in dev[0].request("SCAN_RESULTS"):
+    if ssid in dev[0].request("SCAN_RESULTS"):
         raise Exception("BSS unexpectedly found in initial scan")
 
     id1 = dev[0].connect("foo", key_mgmt="NONE", scan_ssid="1",
                          only_add_network=True)
-    id2 = dev[0].connect("test-scan", key_mgmt="NONE", scan_ssid="1",
+    id2 = dev[0].connect(ssid, key_mgmt="NONE", scan_ssid="1",
                          only_add_network=True)
     id3 = dev[0].connect("bar", key_mgmt="NONE", only_add_network=True)
 
     check_scan(dev[0], "freq=2412 use_id=1")
-    if "test-scan" in dev[0].request("SCAN_RESULTS"):
+    if ssid in dev[0].request("SCAN_RESULTS"):
         raise Exception("BSS unexpectedly found in scan")
 
     # Allow multiple attempts to be more robust under heavy CPU load that can
@@ -515,7 +515,7 @@ def test_scan_hidden(dev, apdev):
     found = False
     for i in range(10):
         check_scan(dev[0], "scan_id=%d,%d,%d freq=2412 use_id=1" % (id1, id2, id3))
-        if "test-scan" in dev[0].request("SCAN_RESULTS"):
+        if ssid in dev[0].request("SCAN_RESULTS"):
             found = True
             break
     if not found:
@@ -1291,6 +1291,11 @@ def test_scan_chan_switch(dev, apdev):
     run_scan(dev[0], bssid, 2412)
     dev[0].dump_monitor()
 
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    hapd.disable()
+    dev[0].flush_scan_cache()
+
 def test_scan_new_only(dev, apdev):
     """Scan and only_new=1 multiple times"""
     dev[0].flush_scan_cache()
@@ -1534,7 +1539,17 @@ def test_scan_specific_bssid(dev, apdev):
 
 def test_scan_probe_req_events(dev, apdev):
     """Probe Request frame RX events from hostapd"""
-    hapd = hostapd.add_ap(apdev[0], {"ssid": "open"})
+    run_scan_probe_req_events(dev, apdev)
+
+def test_scan_probe_req_events_with_payload(dev, apdev):
+    """Probe Request frame RX events with payload from hostapd"""
+    run_scan_probe_req_events(dev, apdev, with_payload=True)
+
+def run_scan_probe_req_events(dev, apdev, with_payload=False):
+    params = {"ssid": "open"}
+    if with_payload:
+        params["notify_mgmt_frames"] = "1"
+    hapd = hostapd.add_ap(apdev[0], params)
     hapd2 = hostapd.Hostapd(apdev[0]['ifname'])
     if "OK" not in hapd2.mon.request("ATTACH probe_rx_events=1"):
         raise Exception("Failed to register for events")
@@ -1546,6 +1561,8 @@ def test_scan_probe_req_events(dev, apdev):
         raise Exception("RX-PROBE-REQUEST not reported")
     if "sa=" + dev[0].own_addr() not in ev:
         raise Exception("Unexpected event parameters: " + ev)
+    if with_payload and " buf=40" not in ev:
+        raise Exception("Missing payload in event parameters: " + ev)
 
     ev = hapd.wait_event(["RX-PROBE-REQUEST"], timeout=0.1)
     if ev is not None:
@@ -2027,3 +2044,21 @@ def test_scan_short_ssid_list(dev, apdev):
 
     if not found:
         raise Exception("AP not found in scan results")
+
+def test_scan_freq_network(dev, apdev):
+    """Scanning channels based on network profiles"""
+    hostapd.add_ap(apdev[0], {"ssid": "test-scan"})
+
+    id = dev[0].add_network()
+    dev[0].set_network_quoted(id, "ssid", "foo")
+    dev[0].set_network(id, "key_mgmt", "NONE")
+    dev[0].set_network(id, "disabled", "0")
+
+    id2 = dev[0].add_network()
+    dev[0].set_network_quoted(id2, "ssid", "test-scan")
+    dev[0].set_network(id2, "key_mgmt", "NONE")
+    dev[0].set_network(id2, "disabled", "0")
+    dev[0].set_network(id2, "scan_freq", "2412")
+
+    dev[0].select_network(id2)
+    dev[0].wait_connected()

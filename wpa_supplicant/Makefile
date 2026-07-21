@@ -72,7 +72,7 @@ mkconfig:
 		echo '.config exists - did not replace it'; \
 		exit 1; \
 	fi
-	echo CONFIG_DRIVER_HOSTAP=y >> .config
+	echo CONFIG_DRIVER_NL80211=y >> .config
 	echo CONFIG_DRIVER_WEXT=y >> .config
 
 $(DESTDIR)$(BINDIR)/%: %
@@ -154,7 +154,7 @@ LIBCTRLSO += ../src/utils/trace.c
 LDFLAGS += -rdynamic
 CFLAGS += -funwind-tables
 ifdef CONFIG_WPA_TRACE_BFD
-CFLAGS += -DPACKAGE="wpa_supplicant" -DWPA_TRACE_BFD
+CFLAGS += -DPACKAGE="wpa_supplicant" -DWPA_TRACE_BFD -fno-inline -fno-optimize-sibling-calls
 LIBS += -lbfd -ldl -liberty -lz
 LIBS_p += -lbfd -ldl -liberty -lz
 LIBS_c += -lbfd -ldl -liberty -lz
@@ -279,9 +279,9 @@ CFLAGS += -DCONFIG_SAE
 OBJS += ../src/common/sae.o
 ifdef CONFIG_SAE_PK
 CFLAGS += -DCONFIG_SAE_PK
-NEED_AES_SIV=y
 OBJS += ../src/common/sae_pk.o
 endif
+NEED_AES_SIV=y
 NEED_ECC=y
 NEED_DH_GROUPS=y
 NEED_HMAC_SHA256_KDF=y
@@ -320,10 +320,36 @@ CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN
+NEED_NAN=y
+CFLAGS += -DCONFIG_NAN
+endif
+
 ifdef CONFIG_NAN_USD
-OBJS += ../src/common/nan_de.o
-OBJS += nan_usd.o
+NEED_OFFCHANNEL=y
+NEED_NAN=y
 CFLAGS += -DCONFIG_NAN_USD
+endif
+
+ifdef NEED_NAN
+OBJS += nan_supplicant.o
+OBJS += ../src/nan/nan.o
+OBJS += ../src/common/nan_de.o
+OBJS += ../src/nan/nan_util.o
+OBJS += ../src/nan/nan_ndp.o
+OBJS += ../src/nan/nan_ndl.o
+OBJS += ../src/nan/nan_crypto.o
+OBJS += ../src/nan/nan_sec.o
+OBJS += ../src/nan/nan_bootstrap.o
+ifdef CONFIG_PASN
+OBJS += ../src/nan/nan_pairing.o
+endif
+endif
+
+ifdef CONFIG_PR
+OBJS += ../src/common/proximity_ranging.o
+OBJS += pr_supplicant.o
+CFLAGS += -DCONFIG_PR
 endif
 
 ifdef CONFIG_OWE
@@ -428,6 +454,21 @@ OBJS += wifi_display.o
 endif
 endif
 
+ifdef CONFIG_PMKSA_PRIVACY
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_PMKSA_PRIVACY
+endif
+
+ifdef CONFIG_IEEE8021X_AUTH
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_IEEE8021X_AUTH
+endif
+
+ifdef CONFIG_ENC_ASSOC
+CONFIG_PASN=y
+CFLAGS += -DCONFIG_ENC_ASSOC
+endif
+
 ifdef CONFIG_PASN
 CFLAGS += -DCONFIG_PASN
 CFLAGS += -DCONFIG_PTKSA_CACHE
@@ -435,6 +476,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
+NEED_DRAGONFLY=y
 OBJS += ../src/pasn/pasn_initiator.o
 OBJS += ../src/pasn/pasn_common.o
 OBJS += pasn_supplicant.o
@@ -762,7 +804,7 @@ endif
 
 ifdef CONFIG_EAP_TEAP
 # EAP-TEAP
-SRC_EAP_TEAP = ../src/eap_peer/eap_teap.c ../src/eap_peer/eap_teap_pac.c
+SRC_EAP_TEAP = ../src/eap_peer/eap_teap.c
 SRC_EAP_TEAP += ../src/eap_common/eap_teap_common.c
 ifeq ($(CONFIG_EAP_TEAP), dyn)
 CFLAGS += -DEAP_TEAP_DYNAMIC
@@ -830,7 +872,9 @@ OBJS += ../src/eap_peer/eap_pwd.o ../src/eap_common/eap_pwd_common.o
 CONFIG_IEEE8021X_EAPOL=y
 NEED_ECC=y
 NEED_DRAGONFLY=y
+ifndef CONFIG_FIPS
 MS_FUNCS=y
+endif
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -1022,6 +1066,9 @@ endif
 ifdef CONFIG_IEEE80211BE
 OBJS += ../src/ap/ieee802_11_eht.o
 endif
+ifdef CONFIG_IEEE80211BN
+OBJS += ../src/ap/ieee802_11_uhr.o
+endif
 ifdef CONFIG_WNM_AP
 CFLAGS += -DCONFIG_WNM_AP
 OBJS += ../src/ap/wnm_ap.o
@@ -1035,6 +1082,10 @@ endif
 ifdef CONFIG_CTRL_IFACE
 OBJS += ../src/ap/ctrl_iface_ap.o
 endif
+ifdef CONFIG_ROBUST_AV
+CFLAGS += -DCONFIG_ROBUST_AV
+OBJS += ../src/ap/robust_av.o
+endif
 
 CFLAGS += -DEAP_SERVER -DEAP_SERVER_IDENTITY
 OBJS += ../src/eap_server/eap_server.o
@@ -1043,6 +1094,10 @@ OBJS += ../src/eap_server/eap_server_methods.o
 
 ifdef CONFIG_IEEE80211AC
 CFLAGS += -DCONFIG_IEEE80211AC
+endif
+ifdef CONFIG_IEEE80211BN
+CONFIG_IEEE80211BE=y
+CFLAGS += -DCONFIG_IEEE80211BN
 endif
 ifdef CONFIG_IEEE80211BE
 CONFIG_IEEE80211AX=y
@@ -1060,6 +1115,7 @@ OBJS += ../src/pasn/pasn_responder.o
 OBJS += ../src/ap/ieee802_11.o
 OBJS += ../src/ap/hw_features.o
 OBJS += ../src/ap/dfs.o
+OBJS += ../src/ap/interference.o
 CFLAGS += -DNEED_AP_MLME
 endif
 ifdef CONFIG_WPS
@@ -1192,6 +1248,7 @@ TLS_FUNCS=y
 endif
 
 ifeq ($(CONFIG_TLS), wolfssl)
+CFLAGS += -DCRYPTO_RSA_OAEP_SHA256
 ifdef TLS_FUNCS
 CFLAGS += -DWOLFSSL_DER_LOAD
 OBJS += ../src/crypto/tls_wolfssl.o
@@ -1917,6 +1974,11 @@ OBJS += ../src/utils/json.o
 CFLAGS += -DCONFIG_JSON
 endif
 
+ifdef CONFIG_PROCESS_COORDINATION
+CFLAGS += -DCONFIG_PROCESS_COORDINATION
+OBJS += ../src/common/proc_coord.o
+endif
+
 ifdef CONFIG_MODULE_TESTS
 CFLAGS += -DCONFIG_MODULE_TESTS
 OBJS += wpas_module_tests.o
@@ -1925,6 +1987,10 @@ OBJS += ../src/common/common_module_tests.o
 OBJS += ../src/crypto/crypto_module_tests.o
 ifdef CONFIG_WPS
 OBJS += ../src/wps/wps_module_tests.o
+endif
+ifdef CONFIG_NAN
+OBJS += ../src/nan/nan_module_tests.o
+OBJS += ../src/nan/nan_module_test_cases.o
 endif
 endif
 
@@ -2193,6 +2259,10 @@ LIBPASNSO += ../src/utils/os_$(CONFIG_OS).c
 LIBPASNSO += ../src/utils/config.c
 LIBPASNSO += ../src/utils/common.c
 
+ifndef CONFIG_NO_RANDOM_POOL
+LIBPASNSO += ../src/crypto/random.c
+endif
+
 ifdef NEED_BASE64
 LIBPASNSO += ../src/utils/base64.c
 endif
@@ -2260,7 +2330,7 @@ LIBPASNSO += ../src/crypto/crypto_wolfssl.c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_wolfssl.c
 NEED_TLS_PRF_SHA256=y
-LIBPASNSO += -lwolfssl -lm
+LIBPASNSO_DEP += -lwolfssl -lm
 endif
 endif
 
@@ -2268,7 +2338,7 @@ ifeq ($(CONFIG_TLS), openssl)
 LIBPASNSO += ../src/crypto/crypto_openssl.c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_openssl.c
-LIBPASNSO += -lssl -lcrypto
+LIBPASNSO_DEP += -lssl -lcrypto
 NEED_TLS_PRF_SHA256=y
 endif
 endif
@@ -2277,8 +2347,8 @@ ifeq ($(CONFIG_TLS), gnutls)
 LIBPASNSO += ../src/crypto/crypto_$(CONFIG_CRYPTO).c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_gnutls.c
-LIBPASNSO += -lgnutls -lgpg-error
-LIBPASNSO += -lgcrypt
+LIBPASNSO_DEP += -lgnutls -lgpg-error
+LIBPASNSO_DEP += -lgcrypt
 endif
 endif
 
@@ -2333,7 +2403,7 @@ LIBPASNSO += ../src/pasn/pasn_common.c
 
 libpasn.so: $(LIBPASNSO)
 	@$(E) "  CC  $@ ($^)"
-	$(Q)$(CC) $(LDFLAGS) -o $@ $(PASN_CFLAGS) -shared -fPIC -lcrypto $^
+	$(Q)$(CC) $(LDFLAGS) -o $@ $(PASN_CFLAGS) -shared -fPIC $^ -lcrypto $(LIBPASNSO_DEP)
 
 clean: common-clean
 	$(MAKE) -C ../src clean

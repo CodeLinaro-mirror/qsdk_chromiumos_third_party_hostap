@@ -35,6 +35,7 @@ struct ieee80211_ht_capabilities;
 struct full_dynamic_vlan;
 enum wps_event;
 union wps_event_data;
+struct rsn_pmksa_cache_entry;
 #ifdef CONFIG_MESH
 struct mesh_conf;
 #endif /* CONFIG_MESH */
@@ -97,7 +98,13 @@ struct hapd_interfaces {
 #ifdef CONFIG_IEEE80211BE
 	struct hostapd_mld **mld;
 	size_t mld_count;
+	int (*mld_ctrl_iface_init)(struct hostapd_mld *mld);
+	void (*mld_ctrl_iface_deinit)(struct hostapd_mld *mld);
 #endif /* CONFIG_IEEE80211BE */
+
+#ifdef CONFIG_PROCESS_COORDINATION
+	struct proc_coord *pc;
+#endif /* CONFIG_PROCESS_COORDINATION */
 };
 
 enum hostapd_chan_status {
@@ -219,6 +226,10 @@ struct hostapd_data {
 	void *msg_ctx; /* ctx for wpa_msg() calls */
 	void *msg_ctx_parent; /* parent interface ctx for wpa_msg() calls */
 
+	int num_rates;
+	struct hostapd_rate_data *current_rates;
+	int *basic_rates;
+
 	struct radius_client_data *radius;
 	u64 acct_session_id;
 	struct radius_das_data *radius_das;
@@ -318,6 +329,13 @@ struct hostapd_data {
 			   const u8 *p2p_dev_addr, const u8 *psk,
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	void (*send_eap_req)(struct hostapd_data *hapd, struct sta_info *sta,
+			     u8 type, u16 auth_transaction, u16 status,
+			     struct rsn_pmksa_cache_entry *cached_pmk,
+			     const u8 *eap_req, size_t eap_req_len);
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;
@@ -495,6 +513,10 @@ struct hostapd_data {
 	/* Cached partner info for ML probe response */
 	struct mld_link_info partner_links[MAX_NUM_MLD_LINKS];
 
+	/* 5 characters for "_link", up to 2 characters for <link ID>, so in
+	 * total, additional 7 characters required. */
+	char ctrl_sock_iface[IFNAMSIZ + 7 + 1];
+
 #ifdef CONFIG_TESTING_OPTIONS
 	u8 eht_mld_link_removal_count;
 #endif /* CONFIG_TESTING_OPTIONS */
@@ -502,6 +524,8 @@ struct hostapd_data {
 
 #ifdef CONFIG_NAN_USD
 	struct nan_de *nan_de;
+	/* Whether nan_de should be freed on deinit */
+	bool nan_de_is_owned;
 #endif /* CONFIG_NAN_USD */
 
 	u64 scan_cookie; /* Scan instance identifier for the ongoing HT40 scan
@@ -537,6 +561,10 @@ struct hostapd_mld {
 
 	struct hostapd_data *fbss;
 	struct dl_list links; /* List head of all affiliated links */
+
+	int ctrl_sock;
+	struct dl_list ctrl_dst;
+	char *ctrl_interface; /* Directory for UNIX domain sockets */
 };
 
 #define HOSTAPD_MLD_MAX_REF_COUNT      0xFF
@@ -617,11 +645,6 @@ struct hostapd_iface {
 	struct hostapd_hw_modes *hw_features;
 	int num_hw_features;
 	struct hostapd_hw_modes *current_mode;
-	/* Rates that are currently used (i.e., filtered copy of
-	 * current_mode->channels */
-	int num_rates;
-	struct hostapd_rate_data *current_rates;
-	int *basic_rates;
 	int freq;
 
 	bool radar_detected;
@@ -734,6 +757,10 @@ struct hostapd_iface {
 	struct hostapd_multi_hw_info *multi_hw_info;
 	unsigned int num_multi_hws;
 	struct hostapd_multi_hw_info *current_hw_info;
+
+	/* Use assisted DFS functionality from the driver. This is used only
+	 * in wpa_supplicant builds for P2P GO functionality. */
+	bool assisted_dfs;
 };
 
 /* hostapd.c */
@@ -756,6 +783,8 @@ struct hostapd_iface * hostapd_init(struct hapd_interfaces *interfaces,
 struct hostapd_iface *
 hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 			   const char *config_fname, int debug);
+void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
+				  struct hapd_interfaces *interfaces);
 void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 			   int reassoc);
 void hostapd_interface_deinit_free(struct hostapd_iface *iface);
@@ -777,7 +806,7 @@ void hostapd_chan_switch_config(struct hostapd_data *hapd,
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings);
 int hostapd_force_channel_switch(struct hostapd_iface *iface,
-				 struct csa_settings settings);
+				 struct csa_settings *settings);
 void
 hostapd_switch_channel_fallback(struct hostapd_iface *iface,
 				const struct hostapd_freq_params *freq_params);
@@ -806,6 +835,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			const u8 *req_ie, size_t req_ielen, const u8 *resp_ie,
 			size_t resp_ielen, const u8 *link_addr, int reassoc);
 void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr);
+void hostapd_notif_disassoc_mld(struct hostapd_data *assoc_hapd,
+				struct sta_info *sta, const u8 *addr);
 void hostapd_event_sta_low_ack(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_connect_failed_reason(struct hostapd_data *hapd,
 					 const u8 *addr, int reason_code);
@@ -831,6 +862,10 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
 				      enum smps_mode smps_mode,
 				      enum chan_width chan_width, u8 rx_nss);
 
+int hostapd_change_config_freq(struct hostapd_data *hapd,
+			       struct hostapd_config *conf,
+			       struct hostapd_freq_params *params,
+			       struct hostapd_freq_params *old_params);
 #ifdef CONFIG_FST
 void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 				struct fst_wpa_obj *iface_obj);
@@ -847,11 +882,17 @@ bool hostapd_is_ml_partner(struct hostapd_data *hapd1,
 u8 hostapd_get_mld_id(struct hostapd_data *hapd);
 int hostapd_mld_add_link(struct hostapd_data *hapd);
 int hostapd_mld_remove_link(struct hostapd_data *hapd);
+u8 hostapd_get_active_links(struct hostapd_data *hapd);
 struct hostapd_data * hostapd_mld_get_first_bss(struct hostapd_data *hapd);
 
+int hostapd_build_beacon_data(struct hostapd_data *hapd,
+			      struct beacon_data *beacon);
 void free_beacon_data(struct beacon_data *beacon);
 int hostapd_fill_cca_settings(struct hostapd_data *hapd,
 			      struct cca_settings *settings);
+void hostapd_switch_color_timeout_handler(void *eloop_data, void *user_ctx);
+bool hostapd_is_cca_in_progress(struct hostapd_iface *iface);
+void hostapd_refresh_all_iface_beacons(struct hostapd_iface *hapd_iface);
 
 #ifdef CONFIG_IEEE80211BE
 
@@ -874,5 +915,60 @@ static inline bool hostapd_mld_is_first_bss(struct hostapd_data *hapd)
 #endif /* CONFIG_IEEE80211BE */
 
 u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd);
+
+void hostapd_get_oper_chan_info_of_bss(struct hostapd_data *hapd,
+				       enum oper_chan_width *width,
+				       u8 *seg0, u8 *seg1);
+
+u8 hostapd_get_oper_class_of_bss(struct hostapd_data *hapd);
+
+enum oper_chan_width
+hostapd_get_oper_chan_width_of_bss(struct hostapd_data *hapd);
+
+static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
+{
+	return conf->ieee80211w != NO_MGMT_FRAME_PROTECTION ||
+		conf->rsn_override_mfp != NO_MGMT_FRAME_PROTECTION ||
+		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
+}
+
+enum oper_chan_width
+hostapd_chan_width_from_freq_params(struct hostapd_freq_params *freq_params);
+
+struct hostapd_data *
+hostapd_get_mbssid_bss_by_idx(struct hostapd_data *hapd, size_t idx);
+
+bool hostapd_acceptable_sta_addr(struct hostapd_data *hapd, const u8 *addr,
+				 const u8 *addr_ml, bool mld);
+
+static inline bool
+hostapd_is_ht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211n && !hapd->conf->disable_11n;
+}
+
+static inline bool
+hostapd_is_vht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac;
+}
+
+static inline bool
+hostapd_is_he_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax;
+}
+
+static inline bool
+hostapd_is_eht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211be && !hapd->conf->disable_11be;
+}
+
+static inline bool
+hostapd_is_uhr_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211bn && !hapd->conf->disable_11bn;
+}
 
 #endif /* HOSTAPD_H */

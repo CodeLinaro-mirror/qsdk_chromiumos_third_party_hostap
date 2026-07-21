@@ -9,6 +9,7 @@ CFLAGS += -DCONFIG_WPS
 CFLAGS += -DCONFIG_PROXYARP
 CFLAGS += -DCONFIG_IPV6
 CFLAGS += -DCONFIG_AIRTIME_POLICY
+CFLAGS += -DCONFIG_ROBUST_AV
 
 LIB_OBJS= \
 	accounting.o \
@@ -36,11 +37,13 @@ LIB_OBJS= \
 	ieee802_11_shared.o \
 	ieee802_11_vht.o \
 	ieee802_1x.o \
+	interference.o \
 	neighbor_db.o \
 	ndisc_snoop.o \
 	p2p_hostapd.o \
 	pmksa_cache_auth.o \
 	preauth_auth.o \
+	robust_av.o \
 	rrm.o \
 	sta_info.o \
 	tkip_countermeasures.o \

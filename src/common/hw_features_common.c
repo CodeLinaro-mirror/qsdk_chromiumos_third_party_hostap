@@ -387,6 +387,7 @@ static void punct_update_legacy_bw_80(u8 bitmap, u8 pri_chan, u8 *seg0)
 
 	switch (bitmap) {
 	case 0x6:
+	case 0x9:
 		*seg0 = 0;
 		return;
 	case 0x8:
@@ -432,6 +433,27 @@ static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
 }
 
 
+static void punct_update_legacy_bw_320(u16 bitmap, u8 pri,
+				       enum oper_chan_width *width, u8 *seg0)
+{
+	if (pri < *seg0) {
+		*seg0 -= 16;
+		if (bitmap & 0x00FF) {
+			*width = 1;
+			punct_update_legacy_bw_160(bitmap & 0xFF, pri, width,
+						   seg0);
+		}
+	} else {
+		*seg0 += 16;
+		if (bitmap & 0xFF00) {
+			*width = 1;
+			punct_update_legacy_bw_160((bitmap & 0xFF00) >> 8,
+						   pri, width, seg0);
+		}
+	}
+}
+
+
 void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
 			    u8 *seg0, u8 *seg1)
 {
@@ -446,23 +468,107 @@ void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
 		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
 	}
 
-	/* TODO: 320 MHz */
+	if (*width == CONF_OPER_CHWIDTH_320MHZ && (bitmap & 0xFFFF)) {
+		*width = CONF_OPER_CHWIDTH_160MHZ;
+		punct_update_legacy_bw_320(bitmap & 0xFFFF, pri, width, seg0);
+	}
+}
+
+
+static int hostapd_set_freq_dbe(struct hostapd_freq_params *data, u8 dbe_bw)
+{
+	int starting_freq, offset, index, bw_mhz, start_new, start_old;
+	bool is_5ghz = is_5ghz_freq(data->freq);
+	bool is_6ghz = is_6ghz_freq(data->freq);
+	unsigned int punct_shift;
+
+	if (is_6ghz)
+		starting_freq = 5955;
+	else if (data->freq < 5745)
+		starting_freq = 5180;
+	else
+		starting_freq = 5745;
+
+	switch (dbe_bw) {
+	case IEEE80211_UHR_OPER_DBE_BW_40_MHZ:
+	case IEEE80211_UHR_OPER_DBE_BW_80_MHZ:
+	case IEEE80211_UHR_OPER_DBE_BW_160_MHZ:
+		if (is_5ghz)
+			break;
+		/* fallthrough */
+	case IEEE80211_UHR_OPER_DBE_BW_320_2_MHZ:
+	case IEEE80211_UHR_OPER_DBE_BW_320_1_MHZ:
+		if (is_6ghz)
+			break;
+		/* fallthrough */
+	default:
+		return -1;
+	}
+
+	switch (dbe_bw) {
+	case IEEE80211_UHR_OPER_DBE_BW_40_MHZ:
+		bw_mhz = 40;
+		break;
+	case IEEE80211_UHR_OPER_DBE_BW_80_MHZ:
+		bw_mhz = 80;
+		break;
+	case IEEE80211_UHR_OPER_DBE_BW_160_MHZ:
+		bw_mhz = 160;
+		break;
+	case IEEE80211_UHR_OPER_DBE_BW_320_2_MHZ:
+		starting_freq += 160;
+		/* fallthrough */
+	case IEEE80211_UHR_OPER_DBE_BW_320_1_MHZ:
+		bw_mhz = 320;
+		break;
+	default:
+		/* already handled above - silence compiler warnings */
+		return -1;
+	}
+
+	if (data->freq < starting_freq)
+		return -1;
+
+	start_old = data->center_freq1 - data->bandwidth / 2;
+
+	offset = data->freq - starting_freq;
+	index = offset / bw_mhz;
+	start_new = starting_freq - 10 + index * bw_mhz;
+	data->center_freq1 = start_new + bw_mhz / 2;
+	data->bandwidth = bw_mhz;
+
+	if (start_new < start_old)
+		punct_shift = (start_old - start_new) / 20;
+	else
+		punct_shift = 0;
+
+	data->punct_bitmap <<= punct_shift;
+
+	return 0;
 }
 
 
 int hostapd_set_freq_params(struct hostapd_freq_params *data,
-			    enum hostapd_hw_mode mode,
-			    int freq, int channel, int enable_edmg,
-			    u8 edmg_channel, int ht_enabled,
-			    int vht_enabled, int he_enabled,
-			    bool eht_enabled, int sec_channel_offset,
-			    enum oper_chan_width oper_chwidth,
-			    int center_segment0,
-			    int center_segment1, u32 vht_caps,
-			    struct he_capabilities *he_cap,
-			    struct eht_capabilities *eht_cap,
-			    u16 punct_bitmap)
+			    const struct hostapd_channel_info *info)
 {
+	enum hostapd_hw_mode mode = info->mode;
+	int freq = info->freq;
+	int channel = info->channel;
+	int enable_edmg = info->edmg.enabled;
+	u8 edmg_channel = info->edmg.channel;
+	int ht_enabled = info->ht.enabled;
+	int vht_enabled = info->vht.enabled;
+	int he_enabled = info->he.enabled;
+	bool eht_enabled = info->eht.enabled;
+	int sec_channel_offset = info->ht.sec_channel_offset;
+	enum oper_chan_width oper_chwidth = info->oper_chwidth;
+	int center_segment0 = info->center_segment0;
+	int center_segment1 = info->center_segment1;
+	u32 vht_caps = info->vht.caps;
+	const struct he_capabilities *he_cap = info->he.cap;
+	const struct eht_capabilities *eht_cap = info->eht.cap;
+	u16 punct_bitmap = info->eht.punct_bitmap;
+	bool uhr_enabled = info->uhr.enabled;
 	enum oper_chan_width oper_chwidth_legacy;
 	u8 seg0_legacy, seg1_legacy;
 
@@ -470,6 +576,9 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
 		he_enabled = 0;
 	if (!eht_cap || !eht_cap->eht_supported)
 		eht_enabled = 0;
+	if (!info->uhr.cap || !info->uhr.cap->uhr_supported)
+		uhr_enabled = false;
+
 	os_memset(data, 0, sizeof(*data));
 	data->mode = mode;
 	data->freq = freq;
@@ -481,6 +590,7 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
 	data->sec_channel_offset = sec_channel_offset;
 	data->center_freq1 = freq + sec_channel_offset * 10;
 	data->center_freq2 = 0;
+	data->punct_bitmap = punct_bitmap;
 	if (oper_chwidth == CONF_OPER_CHWIDTH_80MHZ)
 		data->bandwidth = 80;
 	else if (oper_chwidth == CONF_OPER_CHWIDTH_160MHZ ||
@@ -564,12 +674,13 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
 		data->ht_enabled = 0;
 		data->vht_enabled = 0;
 
-		return 0;
+		goto handle_uhr;
 	}
 
 	if (data->eht_enabled) switch (oper_chwidth) {
 	case CONF_OPER_CHWIDTH_320MHZ:
-		if (!(eht_cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
+		if (eht_cap &&
+		    !(eht_cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
 		      EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK)) {
 			wpa_printf(MSG_ERROR,
 				   "320 MHz channel width is not supported in 5 or 6 GHz");
@@ -806,6 +917,19 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
 		break;
 	}
 
+handle_uhr:
+	if (uhr_enabled && info->uhr.dbe_bandwidth) {
+		/* check DBE against UHR capabilities? */
+
+		if (hostapd_set_freq_dbe(data, info->uhr.dbe_bandwidth)) {
+			wpa_printf(MSG_ERROR, "Invalid DBE bandwidth %d",
+				   info->uhr.dbe_bandwidth);
+			return -1;
+		}
+
+		data->punct_bitmap = info->uhr.dbe_punct_bitmap;
+	}
+
 	return 0;
 }
 
@@ -968,7 +1092,7 @@ int chan_pri_allowed(const struct hostapd_channel_data *chan)
 }
 
 
-/* IEEE P802.11be/D3.0, Table 36-30 - Definition of the Punctured Channel
+/* IEEE Std 802.11be-2024, Table 36-30 - Definition of the Punctured Channel
  * Information field in the U-SIG for an EHT MU PPDU using non-OFDMA
  * transmissions */
 static const u16 punct_bitmap_80[] = { 0xF, 0xE, 0xD, 0xB, 0x7 };
