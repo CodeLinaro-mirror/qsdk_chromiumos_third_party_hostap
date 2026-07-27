@@ -989,7 +989,8 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 			  enum nan_service_control_type type,
 			  const u8 *dst, const u8 *a3, u8 req_instance_id,
 			  const struct wpabuf *ssi,
-			  const struct wpabuf *attrs, u32 *cookie)
+			  const struct wpabuf *attrs, u32 *cookie,
+			  unsigned int peer_freq)
 {
 	struct wpabuf *buf;
 	const u8 *forced_addr;
@@ -1079,8 +1080,9 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 
 	/* Use per-service source address if configured, otherwise use NMI */
 	forced_addr = srv->forced_addr_set ? srv->forced_addr : de->nmi;
-
-	nan_de_tx(de, srv->sync ? 0 : srv->freq, srv->sync ? 0 : wait_time,
+	nan_de_tx(de,
+		  peer_freq ? peer_freq : (srv->sync ? 0 : srv->freq),
+		  peer_freq ? wait_time : (srv->sync ? 0 : wait_time),
 		  dst, forced_addr, a3, buf, cookie, srv->id);
 	wpabuf_free(buf);
 }
@@ -1186,7 +1188,7 @@ static void nan_de_tx_multicast(struct nan_de *de, struct nan_de_service *srv,
 	}
 
 	nan_de_tx_sdf(de, srv, wait_time, type, network_id, bssid,
-		      req_instance_id, srv->ssi, NULL, NULL);
+		      req_instance_id, srv->ssi, NULL, NULL, 0);
 	os_get_reltime(&srv->last_multicast);
 }
 
@@ -2283,7 +2285,7 @@ static bool nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 		 * Service Specific Info field if it received a matching
 		 * unsolicited Publish message. */
 		nan_de_transmit(de, srv->id, NULL, NULL, peer_addr,
-				instance_id, NULL, NULL);
+				instance_id, NULL, NULL, 0);
 	}
 
 send_event:
@@ -2410,7 +2412,7 @@ static bool nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_PUBLISH,
 		      srv->publish.solicited_multicast ?
 		      network_id : peer_addr, a3, instance_id, srv->ssi, NULL,
-		      NULL);
+		      NULL, 0);
 
 	if (!srv->is_p2p && !srv->sync)
 		nan_de_pause_state(srv, peer_addr, instance_id);
@@ -3647,11 +3649,13 @@ void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id)
 int nan_de_transmit(struct nan_de *de, int handle,
 		    const struct wpabuf *ssi, const struct wpabuf *elems,
 		    const u8 *peer_addr, u8 req_instance_id,
-		    const struct wpabuf *nan_attrs, u32 *cookie)
+		    const struct wpabuf *nan_attrs, u32 *cookie,
+		    unsigned int peer_freq)
 {
 	struct nan_de_service *srv;
 	const u8 *a3;
 	const u8 *network_id;
+	unsigned int tx_wait;
 
 	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
 		return -1;
@@ -3683,9 +3687,18 @@ int nan_de_transmit(struct nan_de *de, int handle,
 		a3 = srv->a3;
 	else
 		a3 = network_id;
-	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_FOLLOW_UP,
+
+	/* When peer_freq is set, send the follow-up off-channel on the
+	 * peer's discovery frequency instead of the sync/DW path.
+	 */
+	if (peer_freq)
+		tx_wait = 100;
+	else
+		tx_wait = srv->sync ? 0 : 100;
+
+	nan_de_tx_sdf(de, srv, tx_wait, NAN_SRV_CTRL_FOLLOW_UP,
 		      peer_addr, a3, req_instance_id, ssi, nan_attrs,
-		      cookie);
+		      cookie, peer_freq);
 
 	srv->listen_stopped = false;
 	return 0;

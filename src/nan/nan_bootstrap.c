@@ -240,7 +240,8 @@ static void nan_bootstrap_timeout(void *eloop_data, void *user_ctx)
 
 	if (nan->cfg->transmit_followup(nan->cfg->cb_ctx, peer->nmi_addr, attr,
 					peer->bootstrap.handle,
-					peer->bootstrap.req_instance_id)) {
+					peer->bootstrap.req_instance_id,
+					peer->freq)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Bootstrap: Failed to transmit followup");
 
@@ -436,7 +437,7 @@ send_response:
 	}
 
 	if (nan->cfg->transmit_followup(nan->cfg->cb_ctx, peer->nmi_addr, attr,
-					handle, req_instance_id)) {
+					handle, req_instance_id, peer->freq)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Bootstrap: Failed to transmit bootstrap followup");
 
@@ -809,8 +810,8 @@ int nan_bootstrap_request(struct nan_data *nan, int handle,
 	}
 
 	ret = nan->cfg->transmit_followup(nan->cfg->cb_ctx, peer->nmi_addr,
-					  attr, handle,
-					  req_instance_id);
+					  attr, handle, req_instance_id,
+					  peer->freq);
 	wpabuf_free(attr);
 	if (ret) {
 		wpa_printf(MSG_DEBUG,

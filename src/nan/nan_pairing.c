@@ -942,7 +942,8 @@ static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 	ret = nan_data->cfg->transmit_followup(nan_data->cfg->cb_ctx,
 					       peer->nmi_addr, skda,
 					       peer->pairing.handle,
-					       peer->pairing.peer_instance_id);
+					       peer->pairing.peer_instance_id,
+					       peer->freq);
 
 	wpabuf_free(encrypted_key_data);
 	wpabuf_free(skda);

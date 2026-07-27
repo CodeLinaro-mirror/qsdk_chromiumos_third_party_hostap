@@ -1021,15 +1021,18 @@ static void wpas_nan_schedule_changed_cb(void *ctx, const u8 *peer_nmi)
 
 static int wpas_nan_transmit_followup_cb(void *ctx, const u8 *peer_nmi,
 					 const struct wpabuf *attrs, int handle,
-					 u8 req_instance_id)
+					 u8 req_instance_id,
+					 unsigned int peer_freq)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
 	if (!wpa_s->nan_de)
 		return -1;
-
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Sending follow-up frame (peer_freq=%u)", peer_freq);
 	return nan_de_transmit(wpa_s->nan_de, handle, NULL, NULL,
-			       peer_nmi, req_instance_id, attrs, NULL);
+			       peer_nmi, req_instance_id, attrs, NULL,
+			       peer_freq);
 }
 
 
@@ -5151,7 +5154,7 @@ int wpas_nan_transmit(struct wpa_supplicant *wpa_s, int handle,
 	if (!wpa_s->nan_de)
 		return -1;
 	return nan_de_transmit(wpa_s->nan_de, handle, ssi, elems, peer_addr,
-			       req_instance_id, NULL, cookie);
+			       req_instance_id, NULL, cookie, 0);
 }
 
 

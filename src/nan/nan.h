@@ -692,10 +692,12 @@ struct nan_config {
 	 * @attrs: Attributes to include in the Follow-up message
 	 * @handle: Service handle for which the follow-up is sent
 	 * @req_instance_id: Peer's service instance ID
+	 * @peer_freq: Peer's discovery frequency; non-zero to send the
+	 *             follow-up off-channel, 0 to use the sync/DW path
 	 */
 	int (*transmit_followup)(void *ctx, const u8 *peer_nmi,
 				 const struct wpabuf *attrs, int handle,
-				 u8 req_instance_id);
+				 u8 req_instance_id, unsigned int peer_freq);
 
 	/**
 	 * get_supported_bootstrap_methods - Get supported bootstrap methods
