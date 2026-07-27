@@ -721,9 +721,11 @@ struct nan_config {
 	 * @ctx: Callback context from cb_ctx
 	 * @data: Frame to transmit
 	 * @data_len: Length of frame to transmit
+	 * @freq: Frequency in MHz to transmit on (0 = current channel)
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*send_pasn)(void *ctx, const u8 *data, size_t data_len);
+	int (*send_pasn)(void *ctx, const u8 *data, size_t data_len,
+			 unsigned int freq);
 
 	/**
 	 * pairing_status_cb - Callback for reporting NAN pairing result

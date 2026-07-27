@@ -1074,11 +1074,12 @@ static int wpas_nan_get_pbea_info(void *ctx, int handle, u16 *extended_pbm,
 
 #ifdef CONFIG_PASN
 
-static int wpas_nan_pasn_send_cb(void *ctx, const u8 *data, size_t data_len)
+static int wpas_nan_pasn_send_cb(void *ctx, const u8 *data, size_t data_len,
+				 unsigned int freq)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
-	return wpa_drv_send_mlme(wpa_s, data, data_len, 0, 0, 0);
+	return wpa_drv_send_mlme(wpa_s, data, data_len, 0, freq, 0);
 }
 
 

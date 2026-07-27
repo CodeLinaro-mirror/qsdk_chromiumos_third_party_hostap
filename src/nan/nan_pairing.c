@@ -283,7 +283,8 @@ static int nan_pairing_send_cb(void *ctx, const u8 *data, size_t data_len,
 {
 	struct nan_data *nan_data = (struct nan_data *) ctx;
 
-	return nan_data->cfg->send_pasn(nan_data->cfg->cb_ctx, data, data_len);
+	return nan_data->cfg->send_pasn(nan_data->cfg->cb_ctx, data, data_len,
+					freq);
 }
 
 
@@ -729,11 +730,13 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 		peer->pairing.flags |= NAN_PAIRING_FLAG_NPK_VERIFICATION;
 		ret = wpa_pasn_verify(pasn, pasn->own_addr, pasn->peer_addr,
 				      pasn->bssid, pasn->akmp, pasn->cipher,
-				      pasn->group, 0, NULL, 0, NULL, 0, NULL);
+				      pasn->group, peer->freq,
+				      NULL, 0, NULL, 0, NULL);
 	} else {
 		ret = wpas_pasn_start(pasn, pasn->own_addr, pasn->peer_addr,
 				      pasn->bssid, pasn->akmp, pasn->cipher,
-				      pasn->group, 0, NULL, 0, NULL, 0, NULL);
+				      pasn->group, peer->freq,
+				      NULL, 0, NULL, 0, NULL);
 	}
 
 	if (ret) {
