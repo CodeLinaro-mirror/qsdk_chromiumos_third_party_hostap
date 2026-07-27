@@ -9069,6 +9069,14 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+	/* Initialize NAN pairing stack for non-management interfaces.
+	 * NAN discovery (nan_de) is initialized separately on NAN enable.
+	 */
+#ifdef CONFIG_NAN
+	if (!wpa_s->nan_mgmt && !wpa_s->nan)
+		wpas_nan_init(wpa_s);
+#endif /* CONFIG_NAN */
+
 	return 0;
 }
 

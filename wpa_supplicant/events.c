@@ -6954,7 +6954,7 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 		return wpas_pr_pasn_auth_rx(wpa_s, mgmt, len, freq);
 #endif /* CONFIG_PR */
 #ifdef CONFIG_NAN
-	if (wpa_s->nan_mgmt && elems.nan_ie && elems.nan_len)
+	if (wpa_s->nan && elems.nan_ie && elems.nan_len)
 		return wpas_nan_pasn_auth_rx(wpa_s, mgmt, len);
 #endif /* CONFIG_NAN */
 

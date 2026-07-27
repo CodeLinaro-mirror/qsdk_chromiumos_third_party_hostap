@@ -1347,10 +1347,19 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 {
 	struct nan_config nan;
 
-	if (!(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SUPPORT_NAN) ||
+	if (wpa_s->nan)
+		return 0;
+
+	if (!(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SUPPORT_NAN)) {
+		wpa_printf(MSG_DEBUG, "NAN: NAN is not supported");
+		return -1;
+	}
+
+	/* Sync config capability is only required for cluster management. */
+	if (wpa_s->nan_mgmt &&
 	    !(wpa_s->nan_capa.drv_flags &
 	      WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG)) {
-		wpa_printf(MSG_INFO, "NAN: Driver does not support NAN");
+		wpa_printf(MSG_DEBUG, "NAN: NAN sync config not supported");
 		return -1;
 	}
 
@@ -1362,23 +1371,23 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.stop = wpas_nan_stop_cb;
 	nan.update_config = wpas_nan_update_config_cb;
 
-	/* NDP and bootstrapping enabled */
-	if (wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP) {
 #ifdef CONFIG_PASN
-		wpa_printf(MSG_DEBUG, "NAN: Pairing support enabled");
-		nan.send_pasn = wpas_nan_pasn_send_cb;
-		nan.pairing_result_cb = wpas_nan_pasn_auth_status_cb;
-		nan.update_pairing_credentials =
-			wpas_nan_update_pairing_credentials_cb;
-		nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
-		nan.pairing_request = wpas_nan_pasn_pairing_request_cb;
-		nan.pairing_cfg.pairing_setup = true;
-		nan.pairing_cfg.npk_caching = true;
-		nan.pairing_cfg.pairing_verification = true;
-		nan.pairing_cfg.cipher_suites = NAN_PAIRING_PASN_128 |
-			NAN_PAIRING_PASN_256;
+	/* Pairing callbacks are registered for all interfaces */
+	wpa_printf(MSG_DEBUG, "NAN: Pairing support enabled");
+	nan.send_pasn = wpas_nan_pasn_send_cb;
+	nan.pairing_result_cb = wpas_nan_pasn_auth_status_cb;
+	nan.update_pairing_credentials = wpas_nan_update_pairing_credentials_cb;
+	nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
+	nan.pairing_request = wpas_nan_pasn_pairing_request_cb;
+	nan.pairing_cfg.pairing_setup = true;
+	nan.pairing_cfg.npk_caching = true;
+	nan.pairing_cfg.pairing_verification = true;
+	nan.pairing_cfg.cipher_suites = NAN_PAIRING_PASN_128 |
+		NAN_PAIRING_PASN_256;
 #endif /* CONFIG_PASN */
 
+	/* NDP and bootstrapping enabled */
+	if (wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP) {
 		wpa_printf(MSG_DEBUG, "NAN: NDP support enabled");
 
 		nan.ndp_action_notif = wpas_nan_ndp_action_notif_cb;
@@ -1564,7 +1573,7 @@ void wpas_nan_deinit(struct wpa_supplicant *wpa_s)
 
 static bool wpas_nan_ready(struct wpa_supplicant *wpa_s)
 {
-	return wpa_s->nan_mgmt && wpa_s->nan && wpa_s->nan_de &&
+	return wpa_s->nan && wpa_s->nan_de &&
 		wpa_s->wpa_state != WPA_INTERFACE_DISABLED;
 }
 
@@ -4114,9 +4123,23 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	int ret;
 	struct nan_schedule sched;
 
-	if (!wpas_nan_ndp_allowed(wpa_s))
-		return -1;
+	if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
+		wpa_printf(MSG_DEBUG, "NAN: Non-cluster (USD) pairing path");
 
+		return nan_pairing_initiate_pasn_auth(wpa_s->nan, peer_addr,
+						      auth_mode, cipher, handle,
+						      peer_instance_id,
+						      responder, password,
+						      NULL);
+	}
+
+	if (!wpas_nan_ndp_allowed(wpa_s)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDP not allowed for clustered peer - rejecting");
+		return -1;
+	}
+
+	/* Clustered / NDP-capable path */
 	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
 	ret = nan_pairing_initiate_pasn_auth(wpa_s->nan, peer_addr, auth_mode,
 					     cipher, handle, peer_instance_id,
@@ -4280,7 +4303,7 @@ int wpas_nan_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 {
 	struct nan_data *nan = wpa_s->nan;
 
-	if (!nan || !wpas_nan_ndp_allowed(wpa_s))
+	if (!wpas_nan_ready(wpa_s))
 		return -1;
 
 	return nan_pairing_auth_rx(nan, mgmt, len);
