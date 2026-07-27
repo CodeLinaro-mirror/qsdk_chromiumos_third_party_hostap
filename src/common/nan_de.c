@@ -2443,9 +2443,17 @@ static bool nan_de_rx_follow_up(struct nan_de *de, struct nan_de_service *srv,
 	    (!ether_addr_equal(peer_addr, srv->sel_peer_addr) ||
 	     instance_id != srv->sel_peer_id ||
 	     !ssi)) {
+		/* Bootstrap comeback responses carry NPBA but no SSI;
+		 * allow them through so the comeback can be processed,
+		 * and drop everything else.
+		 */
+		if (!nan_de_get_attr(buf, len, NAN_ATTR_NPBA, 0)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: In pauseState - ignore Follow-up message from another peer or without ssi");
+			return false;
+		}
 		wpa_printf(MSG_DEBUG,
-			   "NAN: In pauseState - ignore Follow-up message from another subscriber or without ssi");
-		return false;
+			   "NAN: In pauseState - allow bootstrap Follow-up (NPBA present)");
 	}
 
 	if (srv->type == NAN_DE_PUBLISH && !ssi && !srv->sync)
