@@ -568,6 +568,11 @@ struct nan_peer {
 	struct dl_list list;
 	u8 nmi_addr[ETH_ALEN];
 	bool configured;
+	/* true: peer is not in our cluster (USD or different cluster) */
+	bool non_cluster;
+	/* peer's cluster ID (A3 from received SDF) */
+	u8 peer_cluster_id[ETH_ALEN];
+	unsigned int freq; /* last-seen SDF reception frequency in MHz */
 	struct os_reltime last_seen;
 	struct nan_peer_info info;
 

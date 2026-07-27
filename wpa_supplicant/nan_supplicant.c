@@ -4748,7 +4748,7 @@ void wpas_nan_de_rx_sdf(struct wpa_supplicant *wpa_s, const u8 *src,
 
 #ifdef CONFIG_NAN
 	if (wpas_nan_ready(wpa_s) && store_peer)
-		nan_add_peer(wpa_s->nan, src, buf, len);
+		nan_add_peer(wpa_s->nan, src, NULL, 0, buf, len);
 #endif /* CONFIG_NAN */
 
 	for (skip = 0; ; skip++) {
@@ -4780,7 +4780,7 @@ void wpas_nan_de_rx_sdf(struct wpa_supplicant *wpa_s, const u8 *src,
 		/* Only one SDA inside each Proxy Meta Attribute */
 		if (wpas_nan_ready(wpa_s) && store_peer)
 			nan_add_peer(wpa_s->nan, proxied_addr,
-				     proxy_meta, proxy_meta_len);
+				     NULL, 0, proxy_meta, proxy_meta_len);
 #endif /* CONFIG_NAN */
 	}
 }

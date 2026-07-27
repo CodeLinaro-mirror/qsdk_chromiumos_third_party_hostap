@@ -851,7 +851,9 @@ struct wpabuf * nan_crypto_derive_irsa_tag(const u8 *nik, size_t nik_len,
 					  const u8 *nira_nonce);
 
 int nan_add_peer(struct nan_data *nan, const u8 *addr,
+		 const u8 *a3, unsigned int freq,
 		 const u8 *device_attrs, size_t device_attrs_len);
+bool nan_peer_no_shared_cluster(struct nan_data *nan, const u8 *addr);
 bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
 			  size_t len, u8 req_instance_id, int handle);
 int nan_bootstrap_request(struct nan_data *nan, int handle,

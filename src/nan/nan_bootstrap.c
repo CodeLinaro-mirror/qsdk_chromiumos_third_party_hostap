@@ -594,7 +594,7 @@ bool nan_bootstrap_handle_rx(struct nan_data *nan, const u8 *peer_nmi,
 	/* Handle NAN bootstrap request */
 	if (type == NAN_PBA_TYPE_REQUEST) {
 		if (!peer) {
-			nan_add_peer(nan, peer_nmi, buf, len);
+			nan_add_peer(nan, peer_nmi, NULL, 0, buf, len);
 			peer = nan_get_peer(nan, peer_nmi);
 			if (!peer) {
 				wpa_printf(MSG_DEBUG,

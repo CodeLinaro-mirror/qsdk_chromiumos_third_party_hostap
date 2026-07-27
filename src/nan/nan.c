@@ -1556,6 +1556,7 @@ static struct nan_peer * nan_alloc_peer(struct nan_data *nan)
 
 
 int nan_add_peer(struct nan_data *nan, const u8 *addr,
+		 const u8 *a3, unsigned int freq,
 		 const u8 *device_attrs, size_t device_attrs_len)
 {
 	struct nan_peer *peer;
@@ -1580,10 +1581,58 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 		os_memcpy(peer->nmi_addr, addr, ETH_ALEN);
 	}
 
+	/* Per Wi-Fi Aware spec R5, Table 5 (Address field definition for NAN
+	 * SDFs frames in USD), mark the peer as non-cluster when A3 does not
+	 * match our cluster ID. This covers a USD publisher (A3 == NAN
+	 * Network ID) and a USD subscriber (A3 == self-assigned Cluster ID,
+	 * spec section 2.8.2). When NAN is not started any peer is non-cluster.
+	 * Once set, non_cluster is not cleared; a USD publisher's Follow-up
+	 * copies A3 from the Subscribe, which carries the subscriber's Cluster
+	 * ID and must not overwrite the established state. Store A3 as
+	 * peer_cluster_id when peer is clustered, for use as BSSID in unicast
+	 * frames.
+	 */
+	if (a3) {
+		bool is_non_cluster;
+
+		is_non_cluster = !nan->nan_started ||
+			!ether_addr_equal(a3, nan->cluster_id);
+
+		if (is_non_cluster) {
+			peer->non_cluster = true;
+			os_memset(peer->peer_cluster_id, 0, ETH_ALEN);
+		} else if (!peer->non_cluster) {
+			os_memcpy(peer->peer_cluster_id, a3, ETH_ALEN);
+		}
+	}
+
+	/* Store SDF reception frequency for PASN frame delivery. */
+	if (freq)
+		peer->freq = freq;
+
+	wpa_printf(MSG_DEBUG, "NAN: peer: " MACSTR " non_cluster=%d freq=%u",
+		   MAC2STR(addr), peer->non_cluster, peer->freq);
+
 	nan_parse_device_attrs(nan, peer, device_attrs, device_attrs_len);
 
 	os_get_reltime(&peer->last_seen);
 	return 0;
+}
+
+
+bool nan_peer_no_shared_cluster(struct nan_data *nan, const u8 *addr)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr)
+		return false;
+
+	/* Self is non-cluster if NAN is not started */
+	if (!nan->nan_started)
+		return true;
+
+	peer = nan_get_peer(nan, addr);
+	return peer && peer->non_cluster;
 }
 
 
@@ -2426,7 +2475,8 @@ int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 	if (ret)
 		return ret;
 
-	ret = nan_add_peer(nan, mgmt->sa, mgmt->u.action.u.naf.variable,
+	ret = nan_add_peer(nan, mgmt->sa, NULL, 0,
+			   mgmt->u.action.u.naf.variable,
 			   len - IEEE80211_MIN_ACTION_LEN(naf));
 	if (ret)
 		wpa_printf(MSG_DEBUG, "NAN: Failed to parse peer from NAF");

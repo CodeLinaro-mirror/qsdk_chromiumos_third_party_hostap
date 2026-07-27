@@ -1388,7 +1388,8 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 		return -1;
 	}
 
-	ret = nan_add_peer(nan_data, mgmt->sa, wpabuf_head_u8(nan_ie) + 4,
+	ret = nan_add_peer(nan_data, mgmt->sa, NULL, 0,
+			   wpabuf_head_u8(nan_ie) + 4,
 			   wpabuf_len(nan_ie) - 4);
 	wpabuf_free(nan_ie);
 	if (ret) {
