@@ -713,8 +713,15 @@ int nan_bootstrap_request(struct nan_data *nan, int handle,
 	struct wpabuf *attr;
 	struct wpabuf *pbea;
 
-	if (!nan || !nan->nan_started)
+	if (!nan)
 		return -1;
+
+	/* Bootstrap uses Follow-up frames; both peers need not be part of
+	 * the same NAN cluster.
+	 */
+	if (!nan->nan_started)
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Bootstrap: NAN not started, proceeding for non-cluster peer");
 
 	if (!nan_bootstrap_supported(nan)) {
 		wpa_printf(MSG_DEBUG,
@@ -730,9 +737,17 @@ int nan_bootstrap_request(struct nan_data *nan, int handle,
 	peer = nan_get_peer(nan, peer_nmi);
 	if (!peer) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Bootstrap: Request for unknown peer");
+			   "NAN: Bootstrap: Request for unknown peer " MACSTR,
+			   MAC2STR(peer_nmi));
 		return -1;
 	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Bootstrap: Peer " MACSTR
+		   " non_cluster=%d supported_methods=0x%x in_progress=%d",
+		   MAC2STR(peer_nmi), peer->non_cluster,
+		   peer->bootstrap.supported_methods,
+		   peer->bootstrap.in_progress);
 
 	if (!(pbm & nan->cfg->supported_bootstrap_methods)) {
 		wpa_printf(MSG_DEBUG,
@@ -821,8 +836,15 @@ int nan_bootstrap_peer_reset(struct nan_data *nan, const u8 *peer_nmi)
 {
 	struct nan_peer *peer;
 
-	if (!nan || !nan->nan_started)
+	if (!nan)
 		return -1;
+
+	/* Bootstrap reset uses Follow-up frames; both peers need not be
+	 * part of the same NAN cluster.
+	 */
+	if (!nan->nan_started)
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Bootstrap: NAN not started, proceeding for non-cluster peer");
 
 	peer = nan_get_peer(nan, peer_nmi);
 	if (!peer) {

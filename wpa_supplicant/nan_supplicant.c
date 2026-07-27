@@ -3812,12 +3812,20 @@ int wpas_nan_bootstrap_request(struct wpa_supplicant *wpa_s, char *cmd)
 	u16 bootstrap_method = 0;
 	bool auth = false;
 
-	if (!wpas_nan_ndp_allowed(wpa_s))
-		return -1;
-
 	/* Parse peer address first */
 	if (hwaddr_aton(cmd, peer_nmi) < 0)
 		return -1;
+
+	if (!wpas_nan_ndp_allowed(wpa_s)) {
+		/* Peer has no shared cluster; NDP guard does not apply. */
+		if (!nan_peer_no_shared_cluster(wpa_s->nan, peer_nmi)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NAN_BOOTSTRAP: NDP not allowed, rejecting");
+			return -1;
+		}
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NAN_BOOTSTRAP: Allowing bootstrap for non-cluster device");
+	}
 
 	/* Move past the peer_mac address */
 	pos = os_strchr(cmd, ' ');
@@ -3875,11 +3883,19 @@ int wpas_nan_bootstrap_reset(struct wpa_supplicant *wpa_s, char *cmd)
 {
 	u8 peer_nmi[ETH_ALEN];
 
-	if (!wpas_nan_ndp_allowed(wpa_s))
-		return -1;
-
 	if (hwaddr_aton(cmd, peer_nmi) < 0)
 		return -1;
+
+	if (!wpas_nan_ndp_allowed(wpa_s)) {
+		/* Peer has no shared cluster; NDP guard does not apply. */
+		if (!nan_peer_no_shared_cluster(wpa_s->nan, peer_nmi)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NAN_BOOTSTRAP_RESET: NDP not allowed, rejecting");
+			return -1;
+		}
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NAN_BOOTSTRAP_RESET: Allowing reset for non-cluster device");
+	}
 
 	return nan_bootstrap_peer_reset(wpa_s->nan, peer_nmi);
 }
