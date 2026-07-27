@@ -353,6 +353,7 @@ void nan_de_set_cluster_id(struct nan_de *de, const u8 *cluster_id);
 bool nan_de_is_valid_instance_id(struct nan_de *de, int handle,
 				 bool publish, u8 *service_id);
 u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle);
+const int * nan_de_get_cipher_suites_list(struct nan_de *de, int handle);
 bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid);
 void nan_de_set_tx_mcast_follow_up_prot(struct nan_de *de, bool prot);
 int nan_de_get_status(struct nan_de *de, char *buf, size_t buflen);

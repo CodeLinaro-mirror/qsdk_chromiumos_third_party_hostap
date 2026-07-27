@@ -1044,6 +1044,17 @@ static u16 wpas_nan_get_service_bootstrap_methods(void *ctx, int handle)
 }
 
 
+static const int * wpas_nan_get_service_cipher_suites(void *ctx, int handle)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+
+	if (!wpa_s->nan_de)
+		return NULL;
+
+	return nan_de_get_cipher_suites_list(wpa_s->nan_de, handle);
+}
+
+
 static int wpas_nan_get_pbea_info(void *ctx, int handle, u16 *extended_pbm,
 				  const u8 **pairing_setup_info,
 				  u16 *pairing_setup_info_len)
@@ -1387,6 +1398,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 		nan.transmit_followup = wpas_nan_transmit_followup_cb;
 		nan.get_supported_bootstrap_methods =
 			wpas_nan_get_service_bootstrap_methods;
+		nan.get_cipher_suites_list = wpas_nan_get_service_cipher_suites;
 		nan.get_pbea_info = wpas_nan_get_pbea_info;
 
 		if (wpa_s->driver->get_inact_sec)

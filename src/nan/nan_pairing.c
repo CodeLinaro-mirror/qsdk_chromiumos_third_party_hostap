@@ -480,6 +480,72 @@ fail:
 
 
 /*
+ * nan_pairing_add_csia - Add the pairing Cipher Suite Information attribute
+ * @nan_data: Pointer to NAN data structure
+ * @peer: Pointer to NAN peer structure
+ * @extra_ies: Buffer to which the CSIA is appended
+ * @publish_id: Local service handle; used as the CSIA Publish ID for the
+ *              responder and as a fallback for the initiator when
+ *              peer_instance_id is not yet known
+ *
+ * The responder advertises the service's configured cipher suite list, while
+ * the initiator indicates the selected NCS-PK-PASN cipher suite (the best
+ * NCS-PK-PASN cipher suite supported by both peers, Wi-Fi Aware spec v4.0,
+ * section 7.6.4). The CSIA Publish ID always identifies the peer's publish
+ * service when acting as initiator.
+ */
+static void nan_pairing_add_csia(const struct nan_data *nan_data,
+				 const struct nan_peer *peer,
+				 struct wpabuf *extra_ies, int publish_id)
+{
+	struct nan_cipher_suite cs_list[NAN_CS_MAX];
+	size_t cs_count = 0;
+	const int *cs_ids = NULL;
+	u8 csia_publish_id;
+
+	if (peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER ||
+	    peer->pairing.peer_instance_id <= 0)
+		csia_publish_id = (u8) publish_id;
+	else
+		csia_publish_id = (u8) peer->pairing.peer_instance_id;
+
+	/* The responder advertises the full service cipher suite list. */
+	if (nan_data->cfg->get_cipher_suites_list && publish_id > 0 &&
+	    peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER)
+		cs_ids = nan_data->cfg->get_cipher_suites_list(
+			nan_data->cfg->cb_ctx, publish_id);
+
+	/* For the initiator, cs_ids is intentionally left NULL; the selected
+	 * cipher suite is derived from the completed PASN handshake below.
+	 */
+	if (cs_ids) {
+		size_t i;
+
+		for (i = 0; cs_ids[i] && cs_count < NAN_CS_MAX; i++) {
+			cs_list[cs_count].csid = (u8) cs_ids[i];
+			cs_list[cs_count].instance_id = csia_publish_id;
+			cs_count++;
+		}
+	}
+
+	if (cs_count == 0) {
+		/* For the pairing initiator, indicate the selected NCS-PK-PASN
+		 * cipher suite - the best cipher suite supported by both peers
+		 * (Wi-Fi Aware spec v4.0, section 7.6.4).
+		 */
+		cs_list[0].csid =
+			(peer->pairing.pasn->cipher == WPA_CIPHER_GCMP_256) ?
+			NAN_CS_PK_PASN_256 : NAN_CS_PK_PASN_128;
+		cs_list[0].instance_id = csia_publish_id;
+		cs_count = 1;
+	}
+
+	nan_add_csia(extra_ies, nan_data->cfg->security_capab,
+		     cs_count, cs_list);
+}
+
+
+/*
  * nan_pairing_prepare_pasn_elems - Prepare NAN element for pairing PASN frames
  * @nan_data: Pointer to NAN data structure
  * @peer: Pointer to NAN peer structure
@@ -491,10 +557,11 @@ fail:
  * included in the first and second PASN frames for NAN pairing.
  * The added attributes are:
  * - Device Capability Extension attribute (DCEA)
- * - Cipher suite information attribute (CSIA) with appropriate PASN cipher
- *   (either GCMP-256 or GCMP-128)
- * - NAN Pairing Bootstrapping Attribute (NPBA) if available
- * - Pairing Bootstrapping Extended Attribute (PBEA) if available
+ * - Cipher Suite Information attribute (CSIA) with the service's configured
+ *   cipher suite list (responder) or the selected NCS-PK-PASN cipher suite
+ *   (initiator, Wi-Fi Aware spec v4.0, section 7.6.4)
+ * - NAN Pairing Bootstrapping attribute (NPBA), if available
+ * - Pairing Bootstrapping Extended attribute (PBEA), if available
  */
 static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 					   struct nan_peer *peer,
@@ -502,7 +569,6 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 					   int publish_id, int auth_mode)
 {
 	u8 *len_ptr;
-	struct nan_cipher_suite cs;
 	size_t initial_len = wpabuf_len(extra_ies);
 
 	wpabuf_put_u8(extra_ies, WLAN_EID_VENDOR_SPECIFIC);
@@ -513,14 +579,7 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 	/* OUI + OUI Type */
 	wpabuf_put_be32(extra_ies, NAN_IE_VENDOR_TYPE);
 
-	if (peer->pairing.pasn->cipher == WPA_CIPHER_GCMP_256)
-		cs.csid = NAN_CS_PK_PASN_256;
-	else
-		cs.csid = NAN_CS_PK_PASN_128;
-
-	cs.instance_id = publish_id;
-
-	nan_add_csia(extra_ies, nan_data->cfg->security_capab, 1, &cs);
+	nan_pairing_add_csia(nan_data, peer, extra_ies, publish_id);
 
 	if (auth_mode == NAN_PASN_AUTH_MODE_SAE ||
 	    auth_mode == NAN_PASN_AUTH_MODE_PASN) {
@@ -629,6 +688,14 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 	if (!extra_ies)
 		return -1;
 
+	/* Record service instance IDs before building the NAN element so that
+	 * nan_pairing_prepare_pasn_elems() can read peer_instance_id when
+	 * selecting the CSIA Publish ID for the subscriber role.
+	 */
+	peer->pairing.handle = handle;
+	peer->pairing.peer_instance_id = peer_instance_id;
+	peer->pairing.flags = 0;
+
 	/* TODO: Add support for NAN element fragmentation if it's larger than
 	 * 255 octets, as defined in Wi-Fi Aware Specification v4.0 section 9.1.
 	 */
@@ -637,10 +704,6 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 	pasn_set_extra_ies(pasn, wpabuf_head_u8(extra_ies),
 			   wpabuf_len(extra_ies));
 	wpabuf_free(extra_ies);
-
-	peer->pairing.handle = handle;
-	peer->pairing.peer_instance_id = peer_instance_id;
-	peer->pairing.flags = 0;
 
 	if (nan_configure_peer_schedule(nan_data, peer, sched))
 		wpa_printf(MSG_DEBUG, "NAN: Could not configure peer schedule");
@@ -1036,32 +1099,42 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
  * @cs: Pointer to nan_cipher_suite structure to store parsed information
  * Returns: 0 on success, -1 on failure
  *
- * Parses the NAN Cipher Suite Info Attribute (CSIA) and extracts the cipher
- * suite ID (csid) and instance ID from the attribute. It is assumed that only
- * one cipher suite is present in the attribute (which is the case for NAN
- * pairing).
+ * Parses the NAN Cipher Suite Info attribute (CSIA) and extracts the first
+ * PASN-capable cipher suite entry. The CSIA may contain multiple entries;
+ * non-PASN entries are skipped and the first PASN-capable entry is selected.
  */
 static int nan_parse_csia(const u8 *csia, size_t len,
 			  struct nan_cipher_suite *cs)
 {
-	/* Capabilities (1) + Cipher Suite list (2) */
+	size_t offset;
+
+	/* Capabilities (1) + at least one Cipher Suite entry (2) */
 	if (len < sizeof(struct nan_cipher_suite_info) +
 	    sizeof(struct nan_cipher_suite)) {
 		wpa_printf(MSG_DEBUG, "NAN: Pairing: CSIA too short");
 		return -1;
 	}
 
-	cs->csid = csia[1];
-	cs->instance_id = csia[2];
+	/* Iterate cipher suite entries and select the first PASN-capable
+	 * one.
+	 */
+	for (offset = sizeof(struct nan_cipher_suite_info);
+	     offset + sizeof(struct nan_cipher_suite) <= len;
+	     offset += sizeof(struct nan_cipher_suite)) {
+		u8 csid = csia[offset];
 
-	if (cs->csid != NAN_CS_PK_PASN_128 && cs->csid != NAN_CS_PK_PASN_256) {
+		if (csid == NAN_CS_PK_PASN_128 || csid == NAN_CS_PK_PASN_256) {
+			cs->csid = csid;
+			cs->instance_id = csia[offset + 1];
+			return 0;
+		}
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Unsupported cipher suite in CSIA: %u",
-			   cs->csid);
-		return -1;
+			   csid);
 	}
 
-	return 0;
+	wpa_printf(MSG_DEBUG, "NAN: Pairing: CSIA missing or invalid");
+	return -1;
 }
 
 

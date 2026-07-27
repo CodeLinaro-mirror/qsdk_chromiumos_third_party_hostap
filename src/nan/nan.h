@@ -707,6 +707,14 @@ struct nan_config {
 	u16 (*get_supported_bootstrap_methods)(void *ctx, int handle);
 
 	/**
+	 * get_cipher_suites_list - Get cipher suite list for a service
+	 * @ctx: Callback context from cb_ctx
+	 * @handle: Service handle
+	 * Returns: Cipher suite list configured for the service, or NULL
+	 */
+	const int * (*get_cipher_suites_list)(void *ctx, int handle);
+
+	/**
 	 * send_pasn - Transmit a PASN Authentication frame
 	 * @ctx: Callback context from cb_ctx
 	 * @data: Frame to transmit

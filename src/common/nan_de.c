@@ -3974,6 +3974,21 @@ u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle)
 }
 
 
+const int * nan_de_get_cipher_suites_list(struct nan_de *de, int handle)
+{
+	struct nan_de_service *srv;
+
+	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
+		return NULL;
+
+	srv = de->service[handle - 1];
+	if (!srv)
+		return NULL;
+
+	return srv->cipher_suites_list;
+}
+
+
 bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid)
 {
 	struct nan_de_service *srv;
