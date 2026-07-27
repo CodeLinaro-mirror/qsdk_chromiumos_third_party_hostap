@@ -76,6 +76,7 @@ enum nan_attr_id {
 	NAN_ATTR_IRSA = 0x30, /* Identity Resolution Set attribute */
 	NAN_ATTR_RSIA = 0x31, /* Randomize Service ID attribute */
 	NAN_ATTR_PROXY_META = 0x33,
+	NAN_ATTR_NIKA = 0x3A, /* NAN Identity Key attribute */
 	NAN_ATTR_VENDOR_SPECIFIC = 0xDD,
 };
 

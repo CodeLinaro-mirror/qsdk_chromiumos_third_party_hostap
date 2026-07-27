@@ -546,6 +546,11 @@ struct nan_pairing_peer_data {
 	char *psi_pairing_name;
 	enum nan_cipher_suite_id pairing_csid;
 	int pairing_akmp;
+	u8 npkid[PMKID_LEN];
+	bool npkid_valid;
+	u8 peer_nik[NAN_NIK_LEN];
+	bool peer_nik_valid;
+	u32 peer_nik_lifetime;
 };
 
 /**
