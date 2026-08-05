@@ -580,10 +580,10 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 	wpabuf_put_be32(extra_ies, NAN_IE_VENDOR_TYPE);
 
 	nan_pairing_add_csia(nan_data, peer, extra_ies, publish_id);
+	nan_add_dev_capa_ext_attr(nan_data, extra_ies);
 
 	if (auth_mode == NAN_PASN_AUTH_MODE_SAE ||
 	    auth_mode == NAN_PASN_AUTH_MODE_PASN) {
-		nan_add_dev_capa_ext_attr(nan_data, extra_ies);
 		if (peer->bootstrap.npba)
 			wpabuf_put_buf(extra_ies, peer->bootstrap.npba);
 
