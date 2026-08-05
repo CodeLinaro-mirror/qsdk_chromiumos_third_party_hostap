@@ -4342,6 +4342,7 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd)
 
 
 #ifdef CONFIG_TESTING_OPTIONS
+
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
 				char *buf, size_t buflen)
 {
@@ -4374,6 +4375,37 @@ int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
 	forced_memzero(tk, sizeof(tk));
 	return ret;
 }
+
+
+int wpas_nan_get_sae_pairing_pmkid(struct wpa_supplicant *wpa_s,
+				   const char *cmd, char *buf, size_t buflen)
+{
+	u8 peer_nmi[ETH_ALEN];
+	u8 pmkid[PMKID_LEN];
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_pmkid: NAN not initialized");
+		return -1;
+	}
+
+	if (hwaddr_aton(cmd, peer_nmi)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_pmkid: Invalid peer NMI: '%s'",
+			   cmd);
+		return -1;
+	}
+
+	if (nan_peer_get_pairing_pmkid(wpa_s->nan, peer_nmi, pmkid)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_pmkid: No PMKID for " MACSTR,
+			   MAC2STR(peer_nmi));
+		return -1;
+	}
+
+	return wpa_snprintf_hex(buf, buflen, pmkid, PMKID_LEN);
+}
+
 #endif /* CONFIG_TESTING_OPTIONS */
 
 
