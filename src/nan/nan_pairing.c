@@ -390,7 +390,14 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	pasn = pairing->pasn;
 	pasn_set_own_addr(pasn, nan_data->cfg->nmi_addr);
 	pasn_set_peer_addr(pasn, peer->nmi_addr);
-	pasn_set_bssid(pasn, nan_data->cluster_id);
+	/* For non-cluster (USD) devices the local cluster ID is zero; use
+	 * the peer's cluster ID as BSSID so frame validation passes.
+	 */
+	if (is_zero_ether_addr(nan_data->cluster_id) &&
+	    !is_zero_ether_addr(peer->peer_cluster_id))
+		pasn_set_bssid(pasn, peer->peer_cluster_id);
+	else
+		pasn_set_bssid(pasn, nan_data->cluster_id);
 
 	if (self_role == NAN_PAIRING_ROLE_INITIATOR)
 		pasn->pmksa = nan_data->initiator_pmksa;
@@ -1474,10 +1481,25 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 		return -1;
 	}
 
-	if (auth_transaction == 1)
+	if (auth_transaction == 1) {
+		struct pasn_data *pasn = peer->pairing.pasn;
+
+		/* For non-cluster (USD) devices the BSSID is zero until the
+		 * first PASN M1 is received; update it from the frame so
+		 * subsequent checks pass.
+		 */
+		if (pasn && is_zero_ether_addr(pasn->bssid) &&
+		    !is_zero_ether_addr(mgmt->bssid)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Pairing: Setting BSSID from PASN M1: "
+				   MACSTR, MAC2STR(mgmt->bssid));
+			pasn_set_bssid(pasn, mgmt->bssid);
+		}
+
 		return nan_pairing_handle_auth_1(nan_data,
 						 nan_data->cfg->nmi_addr, peer,
 						 mgmt, len);
+	}
 	if (auth_transaction == 2)
 		return nan_pairing_handle_auth_2(nan_data, peer, mgmt, len);
 	if (auth_transaction == 3)
