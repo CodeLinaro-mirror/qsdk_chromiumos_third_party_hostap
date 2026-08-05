@@ -4306,14 +4306,15 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd)
 
 
 int wpas_nan_pasn_auth_rx(struct wpa_supplicant *wpa_s,
-			  const struct ieee80211_mgmt *mgmt, size_t len)
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  int freq)
 {
 	struct nan_data *nan = wpa_s->nan;
 
 	if (!wpas_nan_ready(wpa_s))
 		return -1;
 
-	return nan_pairing_auth_rx(nan, mgmt, len);
+	return nan_pairing_auth_rx(nan, mgmt, len, freq);
 }
 
 #endif /* CONFIG_PASN */

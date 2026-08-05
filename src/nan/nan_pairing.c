@@ -724,7 +724,8 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 			ret = nan_pairing_auth_rx(
 				nan_data,
 				wpabuf_head(peer->pairing.pending_auth1),
-				wpabuf_len(peer->pairing.pending_auth1));
+				wpabuf_len(peer->pairing.pending_auth1),
+				(int) peer->freq);
 			wpabuf_free(peer->pairing.pending_auth1);
 			peer->pairing.pending_auth1 = NULL;
 
@@ -1356,10 +1357,12 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
  * @nan_data: Pointer to NAN data structure
  * @mgmt: Pointer to the PASN Authentication frame
  * @len: Length of the PASN Authentication frame in bytes
+ * @freq: Frequency on which the frame was received (MHz)
  * Returns: 0 on success, -1 on failure
  */
 int nan_pairing_auth_rx(struct nan_data *nan_data,
-			const struct ieee80211_mgmt *mgmt, size_t len)
+			const struct ieee80211_mgmt *mgmt, size_t len,
+			int freq)
 {
 	struct nan_peer *peer;
 	u16 auth_alg, auth_transaction, status_code;
@@ -1483,6 +1486,13 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 
 	if (auth_transaction == 1) {
 		struct pasn_data *pasn = peer->pairing.pasn;
+
+		/* Set the reception frequency so the response is sent on
+		 * the correct channel; needed for non-cluster (USD) devices
+		 * where the radio is not locked to a fixed channel.
+		 */
+		if (pasn && freq)
+			pasn->freq = freq;
 
 		/* For non-cluster (USD) devices the BSSID is zero until the
 		 * first PASN M1 is received; update it from the frame so

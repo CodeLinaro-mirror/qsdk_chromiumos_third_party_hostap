@@ -949,7 +949,8 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 				    size_t data_len, bool acked);
 int nan_pairing_auth_rx(struct nan_data *nan_data,
-			const struct ieee80211_mgmt *mgmt, size_t len);
+			const struct ieee80211_mgmt *mgmt, size_t len,
+			int freq);
 int nan_pairing_set_pairing_setup(struct nan_data *nan_data, bool value);
 int nan_pairing_set_npk_caching(struct nan_data *nan_data, bool value);
 int nan_pairing_set_pairing_verification(struct nan_data *nan_data, bool value);
@@ -985,7 +986,7 @@ static inline int nan_pairing_pasn_auth_tx_status(struct nan_data *nan,
 
 static inline int nan_pairing_auth_rx(struct nan_data *nan_data,
 				      const struct ieee80211_mgmt *mgmt,
-				      size_t len)
+				      size_t len, int freq)
 {
 	return -1;
 }

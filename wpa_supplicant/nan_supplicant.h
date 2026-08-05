@@ -54,7 +54,8 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_pasn_auth_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
 				 size_t data_len, bool acked);
 int wpas_nan_pasn_auth_rx(struct wpa_supplicant *wpa_s,
-			  const struct ieee80211_mgmt *mgmt, size_t len);
+			  const struct ieee80211_mgmt *mgmt, size_t len,
+			  int freq);
 
 #else /* CONFIG_NAN */
 
