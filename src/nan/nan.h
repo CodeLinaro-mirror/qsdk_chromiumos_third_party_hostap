@@ -917,6 +917,7 @@ int nan_crypto_pmkid_list(struct dl_list *pmkid_list, const u8 *raddr,
 			  const u8 *pmk);
 void nan_crypto_clear_pmkid_list(struct dl_list *pmkid_list);
 void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf);
+void nan_add_conn_capa_attr(struct wpabuf *buf, u16 capa_bitmap);
 int nan_peer_del_all_ndps(struct nan_data *nan, const u8 *addr);
 int nan_get_chan_entry(struct nan_data *nan, const struct nan_sched_chan *chan,
 		       struct nan_chan_entry *chan_entry);

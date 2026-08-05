@@ -280,11 +280,20 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			attrs->rsia = pos;
 			attrs->rsia_len = attr_len;
 			break;
+		case NAN_ATTR_CONN_CAPA:
+			if (attr_len < 2)
+				break;
+
+			attrs->conn_capa = WPA_GET_LE16(pos);
+			attrs->conn_capa_valid = true;
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Parsed connection capability: 0x%04x",
+				   attrs->conn_capa);
+			break;
 		case NAN_ATTR_MASTER_INDICATION:
 		case NAN_ATTR_CLUSTER:
 		case NAN_ATTR_NAN_ATTR_SERVICE_ID_LIST:
 		case NAN_ATTR_SDA:
-		case NAN_ATTR_CONN_CAPA:
 		case NAN_ATTR_WLAN_INFRA:
 		case NAN_ATTR_P2P_OPER:
 		case NAN_ATTR_IBSS:
@@ -395,6 +404,15 @@ int nan_parse_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 			       mgmt->u.action.u.naf.variable,
 			       len - IEEE80211_MIN_ACTION_LEN(naf),
 			       &msg->attrs);
+}
+
+
+/* Add NAN Connection Capability attribute (Wi-Fi Aware R5 spec, Table 78) */
+void nan_add_conn_capa_attr(struct wpabuf *buf, u16 capa_bitmap)
+{
+	wpabuf_put_u8(buf, NAN_ATTR_CONN_CAPA);
+	wpabuf_put_le16(buf, 2);
+	wpabuf_put_le16(buf, capa_bitmap);
 }
 
 

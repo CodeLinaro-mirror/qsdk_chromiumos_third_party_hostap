@@ -689,6 +689,8 @@ struct nan_attrs {
 	u16 irsa_len;
 	u16 rsia_len;
 	u16 ndpe_len;
+	u16 conn_capa;
+	bool conn_capa_valid;
 };
 
 struct nan_msg {

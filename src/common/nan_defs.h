@@ -80,6 +80,15 @@ enum nan_attr_id {
 	NAN_ATTR_VENDOR_SPECIFIC = 0xDD,
 };
 
+/* Wi-Fi Aware R5 spec, Table 79 (NAN Connection Capability Bitmap format) */
+#define NAN_CONN_CAPA_WIFI_DIRECT  BIT(0)
+#define NAN_CONN_CAPA_P2PS         BIT(1)
+#define NAN_CONN_CAPA_TDLS         BIT(2)
+#define NAN_CONN_CAPA_WLAN_INFRA   BIT(3)
+#define NAN_CONN_CAPA_IBSS         BIT(4)
+#define NAN_CONN_CAPA_MESH         BIT(5)
+#define NAN_CONN_CAPA_IDP          BIT(6)
+
 /* Wi-Fi Aware spec v4.0, Table 43 (Reason Code field) */
 enum nan_reason {
 	NAN_REASON_RESERVED                 = 0,

@@ -3920,6 +3920,31 @@ int wpas_nan_bootstrap_reset(struct wpa_supplicant *wpa_s, char *cmd)
 }
 
 
+static void wpas_nan_add_conn_capa_attr(struct wpa_supplicant *wpa_s,
+					struct wpabuf *buf)
+{
+	u16 conn_capa = 0;
+
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_P2P_CAPABLE)
+		conn_capa |= NAN_CONN_CAPA_WIFI_DIRECT;
+	if (wpa_s->global->p2p)
+		conn_capa |= NAN_CONN_CAPA_P2PS;
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_TDLS_SUPPORT)
+		conn_capa |= NAN_CONN_CAPA_TDLS;
+	if (wpa_s->wpa_state == WPA_COMPLETED &&
+	    wpa_s->current_ssid &&
+	    wpa_s->current_ssid->mode == WPAS_MODE_INFRA)
+		conn_capa |= NAN_CONN_CAPA_WLAN_INFRA;
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_IBSS)
+		conn_capa |= NAN_CONN_CAPA_IBSS;
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_MESH)
+		conn_capa |= NAN_CONN_CAPA_MESH;
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Connection capability bitmap=0x%04x", conn_capa);
+	nan_add_conn_capa_attr(buf, conn_capa);
+}
+
+
 static void wpas_nan_de_add_extra_attrs(void *ctx, struct wpabuf *buf)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -3930,6 +3955,7 @@ static void wpas_nan_de_add_extra_attrs(void *ctx, struct wpabuf *buf)
 	if (wpa_s->nan) {
 		nan_add_dev_capa_attr(wpa_s->nan, buf);
 		nan_pairing_add_attrs(wpa_s->nan, buf);
+		wpas_nan_add_conn_capa_attr(wpa_s, buf);
 	}
 
 	if (!wpas_nan_ndp_allowed(wpa_s) || !map_ids)
