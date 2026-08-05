@@ -2406,6 +2406,15 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 			pos += ret;
 		}
 		if (wpa_s->connection_set) {
+			struct wpa_signal_info si;
+			enum chan_width cw;
+
+			if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
+			    si.chanwidth != CHAN_WIDTH_UNKNOWN)
+				cw = si.chanwidth;
+			else
+				cw = wpa_s->connection_channel_bandwidth;
+
 			ret = os_snprintf(
 				pos, end - pos,
 				"max_nss_rx=%u\n"
@@ -2413,8 +2422,7 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 				"channel_width=%u\n",
 				wpa_s->connection_max_nss_rx,
 				wpa_s->connection_max_nss_tx,
-				channel_width_to_int(
-					wpa_s->connection_channel_bandwidth));
+				channel_width_to_int(cw));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
@@ -12798,14 +12806,24 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
 {
 	int ret, i;
 	char *pos, *end;
+	struct wpa_mlo_signal_info mlo_si;
+	bool have_live_cw;
 
 	if (!wpa_s->valid_links)
 		return -1;
+
+	have_live_cw = wpa_drv_mlo_signal_poll(wpa_s, &mlo_si) == 0;
 
 	pos = buf;
 	end = buf + buflen;
 
 	for_each_link(wpa_s->valid_links, i) {
+		enum chan_width cw = wpa_s->links[i].channel_bandwidth;
+
+		if (have_live_cw && (mlo_si.valid_links & BIT(i)) &&
+		    mlo_si.links[i].chanwidth != CHAN_WIDTH_UNKNOWN)
+			cw = mlo_si.links[i].chanwidth;
+
 		ret = os_snprintf(pos, end - pos, "link_id=%d\nfreq=%u\n"
 				  "ap_link_addr=" MACSTR
 				  "\nsta_link_addr=" MACSTR "\n",
@@ -12824,8 +12842,7 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
 				"channel_width=%u\n",
 				wpa_s->links[i].max_nss_rx,
 				wpa_s->links[i].max_nss_tx,
-				channel_width_to_int(
-					wpa_s->links[i].channel_bandwidth));
+				channel_width_to_int(cw));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
