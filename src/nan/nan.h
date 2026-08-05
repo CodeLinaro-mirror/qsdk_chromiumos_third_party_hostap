@@ -882,6 +882,10 @@ nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr,
 int nan_peer_get_tk(struct nan_data *nan, const u8 *addr,
 		    const u8 *peer_ndi, const u8 *local_ndi,
 		    u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid);
+int nan_peer_get_pairing_tk(struct nan_data *nan, const u8 *addr,
+			    u8 *tk, size_t *tk_len);
+int nan_peer_store_pairing_tk(struct nan_data *nan, const u8 *addr,
+			      const u8 *tk, size_t tk_len);
 int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
 			   u16 *capa, bool *valid);
 int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,

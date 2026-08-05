@@ -2927,6 +2927,63 @@ int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
 }
 
 
+int nan_peer_store_pairing_tk(struct nan_data *nan, const u8 *addr,
+			      const u8 *tk, size_t tk_len)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr || !tk || !tk_len || tk_len > NAN_TK_MAX_LEN)
+		return -1;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: store_pairing_tk: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	os_memcpy(peer->pairing.tk, tk, tk_len);
+	peer->pairing.tk_len = tk_len;
+	wpa_printf(MSG_DEBUG,
+		   "NAN: store_pairing_tk: Stored TK len=%zu for " MACSTR,
+		   tk_len, MAC2STR(addr));
+	return 0;
+}
+
+
+int nan_peer_get_pairing_tk(struct nan_data *nan, const u8 *addr,
+			    u8 *tk, size_t *tk_len)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr || !tk || !tk_len)
+		return -1;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: get_pairing_tk: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	if (!peer->pairing.tk_len) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: get_pairing_tk: No TK stored for " MACSTR,
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	os_memcpy(tk, peer->pairing.tk, peer->pairing.tk_len);
+	*tk_len = peer->pairing.tk_len;
+	wpa_printf(MSG_DEBUG,
+		   "NAN: get_pairing_tk: Returning TK len=%zu for " MACSTR,
+		   *tk_len, MAC2STR(addr));
+	return 0;
+}
+
+
 const struct nan_pairing_cfg * nan_peer_get_pairing_cfg(struct nan_data *nan,
 							const u8 *addr,
 							const u8 **nonce,

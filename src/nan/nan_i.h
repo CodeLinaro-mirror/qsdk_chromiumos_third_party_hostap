@@ -555,6 +555,9 @@ struct nan_pairing_peer_data {
 	u8 peer_nik[NAN_NIK_LEN];
 	bool peer_nik_valid;
 	u32 peer_nik_lifetime;
+	/* TK from the most recent successful pairing PASN exchange */
+	u8 tk[NAN_TK_MAX_LEN];
+	size_t tk_len;
 };
 
 /**

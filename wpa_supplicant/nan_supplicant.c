@@ -1092,41 +1092,44 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 					const char *psi_pairing_name)
 {
 	struct wpa_supplicant *wpa_s = ctx;
-	enum wpa_alg alg;
-	u8 seq[6];
+
+	if (status == WLAN_STATUS_SUCCESS) {
+		enum wpa_alg alg;
+		u8 seq[6];
+
+		if (!ptk) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: No PTK provided after pairing with peer "
+				   MACSTR, MAC2STR(peer_addr));
+			return -1;
+		}
+
+		alg = cipher == WPA_CIPHER_CCMP ?
+			WPA_ALG_CCMP : WPA_ALG_GCMP_256;
+		os_memset(seq, 0, sizeof(seq));
+		/* Do not install NM-TK for non-cluster pairing. */
+		if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Skip NM-TK driver install for peer "
+				   MACSTR, MAC2STR(peer_addr));
+		} else if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1,
+					   seq, sizeof(seq), ptk->tk,
+					   ptk->tk_len,
+					   KEY_FLAG_PAIRWISE_RX_TX)) {
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to install NM-TK for peer "
+				   MACSTR, MAC2STR(peer_addr));
+			return -1;
+		}
+
+		nan_peer_store_pairing_tk(wpa_s->nan, peer_addr,
+					  ptk->tk, ptk->tk_len);
+	}
 
 	wpas_notify_nan_pairing_status(wpa_s, peer_addr, akmp, cipher,
-				       status, nd_pmk,
-				       psi_locale,
-				       psi_vendor_name,
-				       psi_model_name,
+				       status, nd_pmk, psi_locale,
+				       psi_vendor_name, psi_model_name,
 				       psi_pairing_name);
-
-	if (status != WLAN_STATUS_SUCCESS)
-		return 0;
-
-	if (!ptk) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: No PTK provided after pairing with peer "
-			   MACSTR, MAC2STR(peer_addr));
-		return -1;
-	}
-
-	alg = cipher == WPA_CIPHER_CCMP ? WPA_ALG_CCMP : WPA_ALG_GCMP_256;
-	os_memset(seq, 0, sizeof(seq));
-	/* Do not install NM-TK for non-cluster pairing. */
-	if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Skip NM-TK driver install for peer " MACSTR,
-			   MAC2STR(peer_addr));
-	} else if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1,
-				   seq, sizeof(seq), ptk->tk, ptk->tk_len,
-				   KEY_FLAG_PAIRWISE_RX_TX)) {
-		wpa_printf(MSG_INFO,
-			   "NAN: Failed to install NM-TK for peer " MACSTR,
-			   MAC2STR(peer_addr));
-		return -1;
-	}
 
 	return 0;
 }
