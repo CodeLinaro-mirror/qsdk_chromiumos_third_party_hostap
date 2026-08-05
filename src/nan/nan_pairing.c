@@ -1318,7 +1318,8 @@ fail:
  * the necessary information elements, and delegates to the PASN module to
  * handle the authentication.
  */
-static int nan_pairing_handle_auth_1(struct nan_data *nan_data, u8 *own_addr,
+static int nan_pairing_handle_auth_1(struct nan_data *nan_data,
+				     const u8 *own_addr,
 				     struct nan_peer *peer,
 				     const struct ieee80211_mgmt *mgmt,
 				     size_t len)
@@ -1477,12 +1478,64 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 		return -1;
 	}
 
+	/* For Authentication frames 2 and 3, the peer already has an active
+	 * PASN session; look up by source address directly since the NAN
+	 * element is not present in the clear in these frames.
+	 */
+	if (auth_transaction == 2 || auth_transaction == 3) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: Authentication frame %u received",
+			   auth_transaction);
+
+		peer = nan_get_peer(nan_data, mgmt->sa);
+		if (!peer) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Pairing: No peer found for " MACSTR,
+				   MAC2STR(mgmt->sa));
+			return -1;
+		}
+
+		if (!peer->pairing.pasn) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Pairing: No active PASN session for "
+				   MACSTR,
+				   MAC2STR(mgmt->sa));
+			return -1;
+		}
+
+		if (status_code != WLAN_STATUS_SUCCESS) {
+			struct pasn_data *pasn = peer->pairing.pasn;
+
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Pairing: Authentication frame %u rejected - status=%u",
+				   auth_transaction, status_code);
+			if (nan_data->cfg->pairing_result_cb)
+				nan_data->cfg->pairing_result_cb(
+					nan_data->cfg->cb_ctx,
+					peer->nmi_addr,
+					pasn ? pasn->akmp : 0,
+					pasn ? pasn->cipher : 0,
+					status_code, NULL, NULL,
+					NULL, NULL, NULL, NULL);
+			nan_pairing_deinit_peer(peer);
+			return -1;
+		}
+
+		if (auth_transaction == 2)
+			return nan_pairing_handle_auth_2(nan_data, peer, mgmt,
+							 len);
+		return nan_pairing_handle_auth_3(nan_data, peer, mgmt, len);
+	}
+
 	buf = get_vendor_ie(mgmt->u.auth.variable,
 			    len - offsetof(struct ieee80211_mgmt,
-					   u.auth.variable),
+				   u.auth.variable),
 			    NAN_IE_VENDOR_TYPE);
-	if (!buf)
+	if (!buf) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: NAN pairing element not found in Authentication frame 1");
 		return -1;
+	}
 
 	nan_ie = ieee802_11_defrag(buf + 2, buf[1], false);
 	if (!nan_ie) {
