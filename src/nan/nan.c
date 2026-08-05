@@ -2984,6 +2984,62 @@ int nan_peer_get_pairing_tk(struct nan_data *nan, const u8 *addr,
 }
 
 
+int nan_peer_store_pairing_pmkid(struct nan_data *nan, const u8 *addr,
+				 const u8 *pmkid)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr || !pmkid)
+		return -1;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: store_pairing_pmkid: Peer " MACSTR
+			   " not found", MAC2STR(addr));
+		return -1;
+	}
+
+	os_memcpy(peer->pairing.npkid, pmkid, PMKID_LEN);
+	peer->pairing.npkid_valid = true;
+	wpa_printf(MSG_DEBUG,
+		   "NAN: store_pairing_pmkid: Stored PMKID for " MACSTR,
+		   MAC2STR(addr));
+	return 0;
+}
+
+
+int nan_peer_get_pairing_pmkid(struct nan_data *nan, const u8 *addr,
+			       u8 *pmkid)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr || !pmkid)
+		return -1;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: get_pairing_pmkid: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	if (!peer->pairing.npkid_valid) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: get_pairing_pmkid: No PMKID stored for "
+			   MACSTR, MAC2STR(addr));
+		return -1;
+	}
+
+	os_memcpy(pmkid, peer->pairing.npkid, PMKID_LEN);
+	wpa_printf(MSG_DEBUG,
+		   "NAN: get_pairing_pmkid: Returning PMKID for " MACSTR,
+		   MAC2STR(addr));
+	return 0;
+}
+
+
 const struct nan_pairing_cfg * nan_peer_get_pairing_cfg(struct nan_data *nan,
 							const u8 *addr,
 							const u8 **nonce,

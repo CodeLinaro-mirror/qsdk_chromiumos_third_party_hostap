@@ -2245,3 +2245,41 @@ static int nan_pairing_parse_data_element(void *ctx, const u8 *data,
 	wpa_printf(MSG_DEBUG, "NAN: Failed to find NIKA in encrypted data");
 	return -1;
 }
+
+
+void nan_pairing_store_sae_pmkid(struct nan_data *nan_data, const u8 *addr)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan_data, addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: store_sae_pmkid: Peer " MACSTR " not found",
+			   MAC2STR(addr));
+		return;
+	}
+
+	if (!peer->pairing.pasn) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: store_sae_pmkid: No PASN context for " MACSTR,
+			   MAC2STR(addr));
+		return;
+	}
+
+	if (peer->pairing.pasn->akmp != WPA_KEY_MGMT_SAE) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: store_sae_pmkid: akmp=0x%x is not SAE, skipping",
+			   peer->pairing.pasn->akmp);
+		return;
+	}
+
+	wpa_hexdump(MSG_DEBUG, "NAN: store_sae_pmkid: SAE PMKID",
+		    peer->pairing.pasn->sae.pmkid, PMKID_LEN);
+
+	os_memcpy(peer->pairing.npkid, peer->pairing.pasn->sae.pmkid,
+		  PMKID_LEN);
+	peer->pairing.npkid_valid = true;
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Pairing: Stored SAE PMKID for " MACSTR,
+		   MAC2STR(addr));
+}

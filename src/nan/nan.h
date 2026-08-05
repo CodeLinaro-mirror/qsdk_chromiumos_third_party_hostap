@@ -886,6 +886,11 @@ int nan_peer_get_pairing_tk(struct nan_data *nan, const u8 *addr,
 			    u8 *tk, size_t *tk_len);
 int nan_peer_store_pairing_tk(struct nan_data *nan, const u8 *addr,
 			      const u8 *tk, size_t tk_len);
+int nan_peer_get_pairing_pmkid(struct nan_data *nan, const u8 *addr,
+			       u8 *pmkid);
+int nan_peer_store_pairing_pmkid(struct nan_data *nan, const u8 *addr,
+				 const u8 *pmkid);
+void nan_pairing_store_sae_pmkid(struct nan_data *nan_data, const u8 *addr);
 int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
 			   u16 *capa, bool *valid);
 int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,

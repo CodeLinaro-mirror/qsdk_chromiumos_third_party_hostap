@@ -1124,6 +1124,7 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 
 		nan_peer_store_pairing_tk(wpa_s->nan, peer_addr,
 					  ptk->tk, ptk->tk_len);
+		nan_pairing_store_sae_pmkid(wpa_s->nan, peer_addr);
 	}
 
 	wpas_notify_nan_pairing_status(wpa_s, peer_addr, akmp, cipher,
