@@ -1491,6 +1491,16 @@ int nan_parse_device_attrs(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	nan_merge_peer_info(nan, peer, &peer->info, &info);
+	if (attrs.conn_capa_valid) {
+		peer->info.conn_capa = attrs.conn_capa;
+		peer->info.conn_capa_valid = true;
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Stored conn_capa for peer " MACSTR
+			   ": bitmap=0x%04x (IDP=%d)",
+			   MAC2STR(peer->nmi_addr),
+			   peer->info.conn_capa,
+			   !!(peer->info.conn_capa & NAN_CONN_CAPA_IDP));
+	}
 	nan_parse_peer_device_capa(nan, peer, &attrs);
 	nan_parse_peer_elem_container(nan, peer, &attrs);
 	nan_parse_peer_dev_capa_ext(nan, peer, &attrs);
@@ -2896,6 +2906,24 @@ int nan_peer_get_tk(struct nan_data *nan, const u8 *addr,
 		return -1;
 
 	return nan_sec_get_tk(nan, peer, peer_ndi, local_ndi, tk, tk_len, csid);
+}
+
+
+int nan_peer_get_conn_capa(struct nan_data *nan, const u8 *addr,
+			   u16 *capa, bool *valid)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr || !capa || !valid)
+		return -1;
+
+	peer = nan_get_peer(nan, addr);
+	if (!peer)
+		return -1;
+
+	*capa = peer->info.conn_capa;
+	*valid = peer->info.conn_capa_valid;
+	return 0;
 }
 
 

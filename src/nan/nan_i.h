@@ -339,6 +339,8 @@ struct nan_peer_sec_info_entry {
  *
  * @last_seen: Timestamp of the last update of the peer info
  * @seq_id: Sequence id of the last availability update
+ * @conn_capa_valid: Whether a Connection Capability attribute was received
+ * @conn_capa: Connection capability bitmap (NAN_CONN_CAPA_* bits)
  * @avail_entries: List of availability entries of the peer
  * @ulw: List of Unaligned Schedule attribute payloads of the peer
  *	(struct nan_ulw_entry::list entries)
@@ -352,6 +354,8 @@ struct nan_peer_sec_info_entry {
 struct nan_peer_info {
 	struct os_reltime last_seen;
 	u8 seq_id;
+	bool conn_capa_valid;
+	u16 conn_capa;
 	struct dl_list avail_entries;
 	struct dl_list ulw;
 	struct dl_list dev_capa;
