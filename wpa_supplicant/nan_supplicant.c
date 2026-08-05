@@ -4340,6 +4340,42 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd)
 }
 
 
+#ifdef CONFIG_TESTING_OPTIONS
+int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
+				char *buf, size_t buflen)
+{
+	u8 peer_nmi[ETH_ALEN];
+	u8 tk[WPA_TK_MAX_LEN];
+	size_t tk_len = 0;
+	int ret;
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_tk: NAN not initialized");
+		return -1;
+	}
+
+	if (hwaddr_aton(cmd, peer_nmi)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_tk: Invalid peer NMI: '%s'",
+			   cmd);
+		return -1;
+	}
+
+	if (nan_peer_get_pairing_tk(wpa_s->nan, peer_nmi, tk, &tk_len)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN_GET sae_pairing_tk: No TK for " MACSTR,
+			   MAC2STR(peer_nmi));
+		return -1;
+	}
+
+	ret = wpa_snprintf_hex(buf, buflen, tk, tk_len);
+	forced_memzero(tk, sizeof(tk));
+	return ret;
+}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+
 int wpas_nan_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 			  const struct ieee80211_mgmt *mgmt, size_t len,
 			  int freq)

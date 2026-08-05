@@ -14881,6 +14881,13 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (wpas_nan_bootstrap_reset(wpa_s, buf + 20) < 0)
 			reply_len = -1;
 #ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+	} else if (os_strncmp(buf, "NAN_GET sae_pairing_tk ", 23) == 0) {
+		reply_len = wpas_nan_get_sae_pairing_tk(wpa_s, buf + 23,
+							reply, reply_size);
+		if (reply_len < 0)
+			reply_len = -1;
+#endif /* CONFIG_TESTING_OPTIONS */
 	} else if (os_strncmp(buf, "NAN_PAIR ", 9) == 0) {
 		if (wpas_nan_pairing_start(wpa_s, buf + 9) < 0)
 			reply_len = -1;
