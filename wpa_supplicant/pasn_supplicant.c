@@ -42,6 +42,7 @@ struct wpa_pasn_auth_work {
 	unsigned int auth_alg;
 	int group_cipher;
 	int group_mgmt_cipher;
+	bool ltf_keyseed_required;
 #ifdef CONFIG_ENC_ASSOC
 	u16 rsn_capab;
 	u8 *rsnxe_data;
@@ -599,7 +600,8 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 					 peer->network_id,
 					 peer->comeback, peer->comeback_len,
 					 WLAN_AUTH_PASN, 0, 0, 0, NULL,
-					 false)) {
+					 false,
+					 peer->ltf_keyseed_required)) {
 			peer->status = PASN_STATUS_FAILURE;
 			wpa_msg(wpa_s, MSG_INFO, PASN_AUTH_STATUS MACSTR
 				" akmp=%s, status=%u",
@@ -1244,7 +1246,8 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 			 const u8 *comeback, size_t comeback_len,
 			 unsigned int auth_alg, int group_cipher,
 			 int group_mgmt_cipher, u16 rsn_capab,
-			 const u8 *rsnxe_data, bool is_ml_peer)
+			 const u8 *rsnxe_data, bool is_ml_peer,
+			 bool ltf_keyseed_required)
 {
 	struct wpa_pasn_auth_work *awork;
 	struct wpa_bss *bss;
@@ -1279,6 +1282,21 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 	if (!bss)
 		return -1;
 
+	if (ltf_keyseed_required &&
+	    !(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA)) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: LTF keyseed required but local device does not support Secure LTF");
+		return -1;
+	}
+
+	if (ltf_keyseed_required &&
+	    !ieee802_11_rsnx_capab(wpa_bss_get_rsnxe(wpa_s, bss, NULL, false),
+				   WLAN_RSNX_CAPAB_SECURE_LTF)) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: LTF keyseed required but peer does not support Secure LTF");
+		return -1;
+	}
+
 	wpas_pasn_reset(wpa_s);
 
 	awork = os_zalloc(sizeof(*awork));
@@ -1294,6 +1312,7 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 	awork->auth_alg = auth_alg;
 	awork->group_cipher = group_cipher;
 	awork->group_mgmt_cipher = group_mgmt_cipher;
+	awork->ltf_keyseed_required = ltf_keyseed_required;
 #ifdef CONFIG_ENC_ASSOC
 	awork->rsn_capab = rsn_capab;
 	awork->is_ml_peer = is_ml_peer;
@@ -1374,6 +1393,7 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 	u8 peer_addr[ETH_ALEN];
 	int network_id;
 	unsigned int auth_alg;
+	bool ltf_keyseed_required;
 
 	wpa_printf(MSG_DEBUG, "PASN: Immediate retry");
 	os_memcpy(own_addr, pasn->own_addr, ETH_ALEN);
@@ -1390,6 +1410,8 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 	 */
 	auth_alg = pasn->auth_alg;
 
+	ltf_keyseed_required = pasn->secure_ltf;
+
 	wpas_pasn_reset(wpa_s);
 
 	return wpas_pasn_auth_start(wpa_s, own_addr, peer_addr, akmp, cipher,
@@ -1397,7 +1419,8 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 				    params->comeback_len, auth_alg,
 				    pasn->group_cipher,
 				    pasn->group_mgmt_cipher, pasn->rsn_capab,
-				    pasn->rsnxe_ie, pasn->is_ml_peer);
+				    pasn->rsnxe_ie, pasn->is_ml_peer,
+				    ltf_keyseed_required);
 }
 
 

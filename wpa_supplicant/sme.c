@@ -2786,7 +2786,7 @@ static int sme_handle_eppke_external_auth_start(struct wpa_supplicant *wpa_s,
 				    ext_auth->group_mgmt_cipher,
 				    ext_auth->rsn_capab,
 				    ext_auth->rsnxe_data,
-				    is_ml_peer);
+				    is_ml_peer, false);
 }
 
 #endif /* CONFIG_ENC_ASSOC */
