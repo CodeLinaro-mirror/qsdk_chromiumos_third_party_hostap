@@ -491,6 +491,16 @@ struct hostapd_bss_config {
 
 	int wmm_enabled;
 	int wmm_uapsd;
+	bool wmm_override;
+
+	/*
+	 * WMM AC parameters, in same order as 802.1D, i.e.
+	 * 0 = BE (best effort)
+	 * 1 = BK (background)
+	 * 2 = VI (video)
+	 * 3 = VO (voice)
+	 */
+	struct hostapd_wmm_ac_params wmm_ac_params[4];
 
 	struct hostapd_vlan *vlan;
 
@@ -1140,15 +1150,6 @@ struct hostapd_config {
 
 	struct hostapd_tx_queue_params tx_queue[NUM_TX_QUEUES];
 
-	/*
-	 * WMM AC parameters, in same order as 802.1D, i.e.
-	 * 0 = BE (best effort)
-	 * 1 = BK (background)
-	 * 2 = VI (video)
-	 * 3 = VO (voice)
-	 */
-	struct hostapd_wmm_ac_params wmm_ac_params[4];
-
 	int ht_op_mode_fixed;
 	u16 ht_capab;
 	int ieee80211n;
@@ -1467,6 +1468,7 @@ hostapd_set_and_check_bw320_offset(struct hostapd_config *conf,
 int hostapd_mac_comp(const void *a, const void *b);
 struct hostapd_config * hostapd_config_defaults(void);
 void hostapd_config_defaults_bss(struct hostapd_bss_config *bss);
+void hostapd_config_apply_wmm_override(struct hostapd_config *conf);
 void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
 void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
 void hostapd_config_free_eap_users(struct hostapd_eap_user *user);

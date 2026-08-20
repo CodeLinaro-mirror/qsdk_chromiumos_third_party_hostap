@@ -1103,7 +1103,7 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	os_memcpy(wpa_s->ap_iface->conf->wmm_ac_params,
+	os_memcpy(wpa_s->ap_iface->conf->bss[0]->wmm_ac_params,
 		  wpa_s->conf->wmm_ac_params,
 		  sizeof(wpa_s->conf->wmm_ac_params));
 

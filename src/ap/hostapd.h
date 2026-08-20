@@ -244,6 +244,9 @@ struct hostapd_data {
 
 	int parameter_set_count;
 
+	/* Previous WMM element information */
+	struct hostapd_wmm_ac_params prev_wmm[WMM_AC_NUM];
+
 	/* Time Advertisement */
 	u8 time_update_counter;
 	struct wpabuf *time_adv;
@@ -728,9 +731,6 @@ struct hostapd_iface {
 #ifdef CONFIG_AIRTIME_POLICY
 	unsigned int airtime_quantum;
 #endif /* CONFIG_AIRTIME_POLICY */
-
-	/* Previous WMM element information */
-	struct hostapd_wmm_ac_params prev_wmm[WMM_AC_NUM];
 
 	/* Maximum number of interfaces supported for MBSSID advertisement */
 	unsigned int mbssid_max_interfaces;
