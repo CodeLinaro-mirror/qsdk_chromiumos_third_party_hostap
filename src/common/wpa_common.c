@@ -104,6 +104,22 @@ static unsigned int wpa_kek2_len(int akmp)
 #endif /* CONFIG_IEEE80211R */
 
 
+#ifdef CONFIG_ENC_ASSOC
+static int rsn_eppke_mic_len(u16 pasn_group)
+{
+	/* MIC length is half of the output length of the hash algorithm */
+	switch (pasn_group) {
+	case 21:
+		return 32;
+	case 20:
+		return 24;
+	default:
+		return 16;
+	}
+}
+#endif /* CONFIG_ENC_ASSOC */
+
+
 static int rsn_mic_len_hash(size_t pmk_len, enum rsn_hash_alg hash)
 {
 	switch (hash) {
@@ -138,6 +154,10 @@ unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash,
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return rsn_mic_len_hash(pmk_len, hash);
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		return rsn_eppke_mic_len(pasn_group);
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
@@ -297,6 +317,49 @@ int wpa_use_aes_key_wrap(int akmp)
 }
 
 
+#ifdef CONFIG_ENC_ASSOC
+static int rsn_eapol_key_eppke_mic(const u8 *key, size_t key_len,
+				   u16 pasn_group, const u8 *buf,
+				   size_t len, u8 *mic)
+{
+	u8 hash[SHA512_MAC_LEN];
+	size_t mic_len;
+
+	switch (pasn_group) {
+	case 19:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA256");
+		if (hmac_sha256(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 16;
+		break;
+#ifdef CONFIG_SHA384
+	case 20:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA384");
+		if (hmac_sha384(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 24;
+		break;
+#endif /* CONFIG_SHA384 */
+#ifdef CONFIG_SHA512
+	case 21:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA512");
+		if (hmac_sha512(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 32;
+		break;
+#endif /* CONFIG_SHA512 */
+	default:
+		wpa_printf(MSG_INFO, "EPPKE: Unsupported group: %u",
+			   pasn_group);
+		return -1;
+	}
+	os_memcpy(mic, hash, mic_len);
+	wpa_hexdump(MSG_DEBUG, "RSN: EAPOL-Key MIC", mic, mic_len);
+	return 0;
+}
+#endif /* CONFIG_ENC_ASSOC */
+
+
 #if defined(CONFIG_SAE) || defined(CONFIG_OWE) || defined(CONFIG_DPP)
 static int rsn_eapol_key_mic_hash(const u8 *key, size_t key_len, int akmp,
 				  enum rsn_hash_alg hash_alg, int ver,
@@ -416,6 +479,13 @@ int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp,
 				return -1;
 			break;
 #endif /* CONFIG_SAE */
+#ifdef CONFIG_ENC_ASSOC
+		case WPA_KEY_MGMT_EPPKE:
+			if (rsn_eapol_key_eppke_mic(key, key_len, pasn_group,
+						    buf, len, mic) < 0)
+				return -1;
+			break;
+#endif /* CONFIG_ENC_ASSOC */
 #ifdef CONFIG_SUITEB
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
 			wpa_printf(MSG_DEBUG,
