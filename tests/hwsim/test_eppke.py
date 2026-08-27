@@ -1256,6 +1256,95 @@ def test_eppke_without_base_akm_mld_ap(dev, apdev):
             raise HwsimSkip("MLD not supported")
         raise
 
+def run_eppke_without_base_akm_with_rekey(dev, apdev, group, gtk=False,
+                                          ptk=False):
+    """EPPKE authentication without base AKM with GTK/PTK rekey and different groups"""
+    check_eppke_capab(dev[0])
+    ssid = "test-eppke-nobaseakm-mld"
+
+    try:
+        with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
+             HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+            wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+            wpas.interface_add(wpas_iface)
+
+            params = hostapd.wpa2_params(ssid=ssid, wpa_key_mgmt="EPPKE",
+                                         ieee80211w="2")
+            params['ieee80211n'] = '1'
+            params['ieee80211ax'] = '1'
+            params['ieee80211be'] = '1'
+            params['channel'] = '1'
+            params['hw_mode'] = 'g'
+            params['group_mgmt_cipher'] = "AES-128-CMAC"
+            params['beacon_prot'] = '1'
+            params['assoc_frame_encryption'] = '1'
+            params['pmksa_caching_privacy'] = '1'
+            params['eppke_unauth'] = '1'
+            params['pasn_groups'] = str(group)
+
+            if gtk:
+               params['wpa_group_rekey'] = '1'
+
+            if ptk:
+               params['wpa_ptk_rekey'] = '1'
+
+            hapd0 = eht_mld_enable_ap(hapd_iface, 0, params)
+
+            params['channel'] = '6'
+            hapd1 = eht_mld_enable_ap(hapd_iface, 1, params)
+
+            wpas.set("pasn_groups", str(group))
+            wpas.connect(ssid, scan_freq="2412 2437", key_mgmt="EPPKE",
+                         ieee80211w="2", beacon_prot="1", pairwise="CCMP")
+            eht_verify_status(wpas, hapd0, 2412, 20, is_ht=True, mld=True,
+                              valid_links=3, active_links=3)
+            hapd0.wait_sta()
+            sta = hapd0.get_sta(wpas.own_addr())
+            if sta["AKMSuiteSelector"] != '00-0f-ac-29' or \
+               sta["auth_alg"] != '9':
+                raise Exception(
+                    "Incorrect Auth Algo/AKMSuiteSelector value")
+            if gtk:
+               ev = wpas.wait_event(["RSN: Group rekeying completed"],
+                                    timeout=11)
+               if ev is None:
+                  raise Exception("GTK rekey timed out")
+
+            if ptk:
+               ev = wpas.wait_event(["WPA: Key negotiation completed"])
+               if ev is None:
+                  raise Exception("PTK rekey timed out")
+
+            hwsim_utils.test_connectivity(wpas, hapd0)
+    except Exception as e:
+        if "MLD not supported" in str(e) or "Failed to add" in str(e):
+            raise HwsimSkip("MLD not supported")
+        raise
+
+def test_eppke_without_base_akm_with_gtk_rekey_19(dev, apdev):
+    """EPPKE authentication without base AKM with GTK rekey and group 19"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 19, gtk=True, ptk=False)
+
+def test_eppke_without_base_akm_with_gtk_rekey_20(dev, apdev):
+    """EPPKE authentication without base AKM with GTK rekey and group 20"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 20, gtk=True, ptk=False)
+
+def test_eppke_without_base_akm_with_gtk_rekey_21(dev, apdev):
+    """EPPKE authentication without base AKM with GTK rekey and group 21"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 21, gtk=True, ptk=False)
+
+def test_eppke_without_base_akm_with_ptk_rekey_19(dev, apdev):
+    """EPPKE authentication without base AKM with PTK rekey and group 19"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 19, gtk=False, ptk=True)
+
+def test_eppke_without_base_akm_with_ptk_rekey_20(dev, apdev):
+    """EPPKE authentication without base AKM with PTK rekey and group 20"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 20, gtk=False, ptk=True)
+
+def test_eppke_without_base_akm_with_ptk_rekey_21(dev, apdev):
+    """EPPKE authentication without base AKM with PTK rekey and group 21"""
+    run_eppke_without_base_akm_with_rekey(dev, apdev, 21, gtk=False, ptk=True)
+
 def test_eppke_mixed_concurrent(dev, apdev):
     """One STA uses EPPKE (auth_alg=9), another uses SAE-EXT-KEY (auth_alg=3) simultaneously"""
     check_eppke_capab(dev[0])
