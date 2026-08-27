@@ -204,6 +204,7 @@ struct wpa_sm {
 	 */
 	struct pasn_ft_r1kh *pasn_r1kh;
 	unsigned int n_pasn_r1kh;
+	u16 pasn_group;
 #endif /* CONFIG_PASN */
 #endif /* CONFIG_IEEE80211R */
 

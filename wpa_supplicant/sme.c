@@ -3431,7 +3431,7 @@ static int sme_sae_set_pmk(struct wpa_supplicant *wpa_s, const u8 *bssid)
 	wpa_printf(MSG_DEBUG,
 		   "SME: SAE completed - setting PMK for 4-way handshake");
 	wpa_sm_set_pmk(wpa_s->wpa, wpa_s->sme.sae.pmk, wpa_s->sme.sae.pmk_len,
-		       wpa_s->sme.sae.pmkid, bssid);
+		       wpa_s->sme.sae.pmkid, bssid, PASN_GROUP_NOT_SPECIFIED);
 	if (wpa_s->conf->sae_pmkid_in_assoc) {
 		/* Update the own RSNE contents now that we have set the PMK
 		 * and added a PMKSA cache entry based on the successfully
@@ -4319,7 +4319,7 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 		if (pasn->pmksa_entry)
 			wpa_sm_set_cur_pmksa(wpa_s->wpa, pasn->pmksa_entry);
 		wpa_sm_set_pmk(wpa_s->wpa, pasn->pmk, pasn->pmk_len,
-			       pasn->sae.pmkid, NULL);
+			       pasn->sae.pmkid, NULL, pasn_params.group);
 
 		sme_send_authentication(wpa_s, wpa_s->current_bss,
 					wpa_s->current_ssid, 0);

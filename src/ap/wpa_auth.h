@@ -686,7 +686,7 @@ u8 * wpa_auth_write_assoc_resp_eppke(struct wpa_state_machine *sm,
 				     u8 *pos, size_t max_len, bool is_ml);
 void wpa_store_eppke_pmk_ptk_sm(struct wpa_state_machine *sm,
 				const struct wpa_ptk *ptk, const u8 *pmk,
-				size_t pmk_len);
+				size_t pmk_len, u16 pasn_group);
 int wpa_auth_epp_derive_new_pmkid(const u8 *anonce, const u8 *snonce,
 				  int akmp, size_t pmk_len, u8 *pmkid);
 bool wpa_auth_ap_sta_support_assoc_enc(struct wpa_state_machine *sm);

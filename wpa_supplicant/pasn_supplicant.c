@@ -1527,7 +1527,7 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 				  PMKID_LEN);
 #endif /* CONFIG_SME */
 			wpa_sm_set_pmk(wpa_s->wpa, pasn->pmk, pasn->pmk_len,
-				       pasn->sae.pmkid, NULL);
+				       pasn->sae.pmkid, NULL, pasn->group);
 		}
 	}
 

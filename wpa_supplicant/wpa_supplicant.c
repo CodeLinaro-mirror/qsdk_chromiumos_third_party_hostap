@@ -2978,7 +2978,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			if (wpa_supplicant_get_psk(wpa_s, bss, ssid,
 						   psk) == 0) {
 				wpa_sm_set_pmk(wpa_s->wpa, psk, PMK_LEN, NULL,
-					       NULL);
+					       NULL, PASN_GROUP_NOT_SPECIFIED);
 				psk_set = 1;
 			}
 			forced_memzero(psk, sizeof(psk));

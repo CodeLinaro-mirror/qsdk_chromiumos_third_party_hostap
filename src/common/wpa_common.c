@@ -118,7 +118,8 @@ static int rsn_mic_len_hash(size_t pmk_len, enum rsn_hash_alg hash)
 	}
 }
 
-unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash)
+unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash,
+			 u16 pasn_group)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
@@ -375,7 +376,7 @@ static int rsn_eapol_key_mic_hash(const u8 *key, size_t key_len, int akmp,
  */
 int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp,
 		      enum rsn_hash_alg hash_alg, int ver,
-		      const u8 *buf, size_t len, u8 *mic)
+		      const u8 *buf, size_t len, u8 *mic, u16 pasn_group)
 {
 	u8 hash[SHA512_MAC_LEN];
 

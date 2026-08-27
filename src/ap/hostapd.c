@@ -4244,6 +4244,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 			const struct wpa_ptk *ptk;
 			const u8 *pmk;
 			size_t pmk_len;
+			u16 pasn_group = PASN_GROUP_NOT_SPECIFIED;
 
 			switch (sta->auth_alg) {
 			case WLAN_AUTH_EPPKE:
@@ -4255,6 +4256,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 				ptk = &sta->pasn->ptk;
 				pmk = sta->pasn->pmk;
 				pmk_len = sta->pasn->pmk_len;
+				pasn_group = sta->pasn->group;
 				break;
 #ifdef CONFIG_IEEE8021X_AUTH
 			case WLAN_AUTH_802_1X:
@@ -4270,7 +4272,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 				return;
 			}
 			wpa_store_eppke_pmk_ptk_sm(sta->wpa_sm, ptk, pmk,
-						   pmk_len);
+						   pmk_len, pasn_group);
 			wpa_auth_set_ptk_rekey_timer(sta->wpa_sm);
 		}
 #endif /* CONFIG_ENC_ASSOC */

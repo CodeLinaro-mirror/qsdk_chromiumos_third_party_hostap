@@ -29,6 +29,8 @@
 
 #define OWE_DH_GROUP 19
 
+#define PASN_GROUP_NOT_SPECIFIED 0
+
 enum rsn_hash_alg {
 	RSN_HASH_NOT_SPECIFIED,
 	RSN_HASH_SHA1,
@@ -483,7 +485,7 @@ struct rsn_rdie {
 
 int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp,
 		      enum rsn_hash_alg hash, int ver,
-		      const u8 *buf, size_t len, u8 *mic);
+		      const u8 *buf, size_t len, u8 *mic, u16 pasn_group);
 int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 		   const u8 *addr1, const u8 *addr2,
 		   const u8 *nonce1, const u8 *nonce2,
@@ -794,7 +796,8 @@ int wpa_pick_group_cipher(int ciphers);
 int wpa_parse_cipher(const char *value);
 int wpa_write_ciphers(char *start, char *end, int ciphers, const char *delim);
 int wpa_select_ap_group_cipher(int wpa, int wpa_pairwise, int rsn_pairwise);
-unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash);
+unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash,
+			 u16 pasn_group);
 unsigned int wpa_kek_len(int akmp, size_t pmk_len);
 int wpa_use_akm_defined(int akmp);
 int wpa_use_cmac(int akmp);
