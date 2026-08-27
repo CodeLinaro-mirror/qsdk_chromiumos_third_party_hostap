@@ -273,6 +273,7 @@ int wpa_use_akm_defined(int akmp)
 		akmp == WPA_KEY_MGMT_DPP ||
 		akmp == WPA_KEY_MGMT_FT_IEEE8021X_SHA384 ||
 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+		akmp == WPA_KEY_MGMT_EPPKE ||
 		wpa_key_mgmt_sae(akmp) ||
 		wpa_key_mgmt_suite_b(akmp) ||
 		wpa_key_mgmt_fils(akmp);
@@ -310,6 +311,7 @@ int wpa_use_aes_key_wrap(int akmp)
 	return akmp == WPA_KEY_MGMT_OWE ||
 		akmp == WPA_KEY_MGMT_DPP ||
 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+		akmp == WPA_KEY_MGMT_EPPKE ||
 		wpa_key_mgmt_ft(akmp) ||
 		wpa_key_mgmt_sha256(akmp) ||
 		wpa_key_mgmt_sae(akmp) ||

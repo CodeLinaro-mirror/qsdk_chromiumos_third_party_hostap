@@ -4160,7 +4160,8 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 
 	if (ver == WPA_KEY_INFO_TYPE_HMAC_SHA1_AES &&
 	    (sm->key_mgmt != WPA_KEY_MGMT_IEEE8021X &&
-	     sm->key_mgmt != WPA_KEY_MGMT_PSK)) {
+	     sm->key_mgmt != WPA_KEY_MGMT_PSK &&
+	     sm->key_mgmt != WPA_KEY_MGMT_EPPKE)) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
 			"RSN: EAPOL-Key descriptor version %d not allowed due to negotiated AKM (0x%x)",
 			ver, sm->key_mgmt);
