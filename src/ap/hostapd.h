@@ -556,6 +556,11 @@ struct hostapd_mld {
 	struct hostapd_data *fbss;
 	struct dl_list links; /* List head of all affiliated links */
 
+	/* Bitmap for WDS interface name identifiers (1..2007) used to generate
+	 * unique interface names for WDS stations at the MLD level
+	 */
+	u32 wds_ifname_id[AID_WORDS];
+
 	int ctrl_sock;
 	struct dl_list ctrl_dst;
 	char *ctrl_interface; /* Directory for UNIX domain sockets */

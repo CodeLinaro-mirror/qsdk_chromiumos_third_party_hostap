@@ -5297,6 +5297,67 @@ static u32 hostapd_get_aid_word(struct hostapd_data *hapd,
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+static int hostapd_get_wds_mld_ifname_id(struct hostapd_data *hapd,
+					 struct sta_info *sta)
+{
+	struct hostapd_mld *mld = hapd->mld;
+	struct hostapd_data *link_bss;
+	struct sta_info *link_sta;
+	int i, j = 32, ifname_id;
+
+	if (sta->wds_ifname_id > 0) {
+		wpa_printf(MSG_DEBUG, "  old WDS ifname_id %d",
+			   sta->wds_ifname_id);
+		return 0;
+	}
+
+	if (!mld) {
+		wpa_printf(MSG_ERROR,
+			   "MLD structure not available for WDS ifname_id allocation");
+		return -1;
+	}
+
+	for_each_mld_link(link_bss, hapd) {
+		link_sta = ap_get_sta(link_bss, sta->addr);
+		if (link_sta && link_sta != sta &&
+		    link_sta->wds_ifname_id > 0) {
+			sta->wds_ifname_id = link_sta->wds_ifname_id;
+			wpa_printf(MSG_DEBUG,
+				   "  reusing WDS ifname_id %d from another link",
+				   sta->wds_ifname_id);
+			return 0;
+		}
+	}
+
+	for (i = 0; i < AID_WORDS; i++) {
+		if (mld->wds_ifname_id[i] == (u32) -1)
+			continue;
+
+		for (j = 0; j < 32; j++) {
+			if (!(mld->wds_ifname_id[i] & BIT(j)))
+				break;
+		}
+
+		if (j < 32)
+			break;
+	}
+
+	if (i == AID_WORDS)
+		return -1;
+
+	ifname_id = i * 32 + j + 1;
+	if (ifname_id > 2007)
+		return -1;
+
+	sta->wds_ifname_id = ifname_id;
+	mld->wds_ifname_id[i] |= BIT(j);
+	wpa_printf(MSG_DEBUG, "  new WDS ifname_id %d", sta->wds_ifname_id);
+	return 0;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
 int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int i, j = 32, aid;
@@ -9387,6 +9448,16 @@ skip_update:
 			   MAC2STR(sta->addr));
 		sta->pending_wds_enable = 0;
 		sta->flags |= WLAN_STA_WDS;
+#ifdef CONFIG_IEEE80211BE
+		if (hapd->conf->mld_ap &&
+		    hostapd_get_wds_mld_ifname_id(hapd, sta) < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "No room for WDS ifname_id to enable 4-address WDS mode for STA "
+				   MACSTR, MAC2STR(sta->addr));
+			sta->flags &= ~WLAN_STA_WDS;
+			return;
+		}
+#endif /* CONFIG_IEEE80211BE */
 	}
 
 	/* WPS not supported on backhaul BSS. Disable 4addr mode on fronthaul */
@@ -9398,6 +9469,11 @@ skip_update:
 		int ret;
 		char ifname_wds[IFNAMSIZ + 1];
 		int ifname_id = sta->aid;
+
+#ifdef CONFIG_IEEE80211BE
+		if (hapd->conf->mld_ap && (sta->flags & WLAN_STA_WDS))
+			ifname_id = sta->wds_ifname_id;
+#endif /* CONFIG_IEEE80211BE */
 
 		wpa_printf(MSG_DEBUG, "Reenable 4-address WDS mode for STA "
 			   MACSTR " (ifname_id %u)",
@@ -9770,6 +9846,18 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 
 		if (!hapd->conf->wds_sta)
 			return;
+
+#ifdef CONFIG_IEEE80211BE
+		if (hapd->conf->mld_ap && wds) {
+			if (hostapd_get_wds_mld_ifname_id(hapd, sta) < 0) {
+				wpa_printf(MSG_DEBUG,
+					   "No room for WDS ifname_id to enable 4-address WDS mode for STA "
+					   MACSTR, MAC2STR(sta->addr));
+				return;
+			}
+			ifname_id = sta->wds_ifname_id;
+		}
+#endif /* CONFIG_IEEE80211BE */
 
 		if ((sta->flags & (WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK)) ==
 		    WLAN_STA_ASSOC_REQ_OK) {
