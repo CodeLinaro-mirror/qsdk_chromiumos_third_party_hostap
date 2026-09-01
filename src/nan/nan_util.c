@@ -74,11 +74,40 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 
 	while (end - pos > 3) {
 		u8 id = *pos++;
-		u16 attr_len = WPA_GET_LE16(pos);
+		u16 attr_len;
 
+		/*
+		 * IEEE 802.11 MME (Element ID 0x4C = 76) uses the standard
+		 * element format: [ID:1][Length:1][payload:Length].
+		 * NAN attributes use [ID:1][Length:2-LE][payload:Length].
+		 * An MME is added after the NAN attributes in group-addressed
+		 * SDF/NAF frames when management frame protection is used.
+		 * The MME might not be removed from the frame (e.g., if an IGTK
+		 * is not installed), so parse it with the correct 1-byte length
+		 * field and skip it so the LE16 NAN length reader does not
+		 * misinterpret the element length + next byte as a large value.
+		 */
+		if (id == 0x4C) {
+			u8 elem_len;
+
+			if (end - pos < 1)
+				break;
+			elem_len = *pos;
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Skipping 802.11 MME (0x4C) len=%u",
+				   elem_len);
+			pos += 1 + elem_len;
+			continue;
+		}
+
+		attr_len = WPA_GET_LE16(pos);
 		pos += 2;
-		if (attr_len > end - pos)
-			goto fail;
+		if (attr_len > end - pos) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Truncated attribute %u (len %u; left %zu), skipping",
+				   id, attr_len, end - pos);
+			break;
+		}
 
 		switch (id) {
 		case NAN_ATTR_SDEA:
