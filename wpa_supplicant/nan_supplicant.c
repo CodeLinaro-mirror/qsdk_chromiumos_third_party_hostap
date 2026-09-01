@@ -4161,7 +4161,8 @@ static int wpas_nan_pasn_update_station(struct wpa_supplicant *wpa_s,
  */
 int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		  u8 auth_mode, int cipher, int handle, u8 peer_instance_id,
-		  bool responder, const char *password)
+		  bool responder, const char *password,
+		  bool auto_nik_exchange)
 {
 	int ret;
 	struct nan_schedule sched;
@@ -4173,7 +4174,7 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 						      auth_mode, cipher, handle,
 						      peer_instance_id,
 						      responder, password,
-						      NULL);
+						      NULL, auto_nik_exchange);
 	}
 
 	if (!wpas_nan_ndp_allowed(wpa_s)) {
@@ -4186,7 +4187,8 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
 	ret = nan_pairing_initiate_pasn_auth(wpa_s->nan, peer_addr, auth_mode,
 					     cipher, handle, peer_instance_id,
-					     responder, password, &sched);
+					     responder, password, &sched,
+					     auto_nik_exchange);
 	if (!ret)
 		ret = wpas_nan_pasn_update_station(wpa_s, peer_addr);
 	else
@@ -4293,7 +4295,8 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 
 	if (wpas_nan_pair(wpa_s, addr, auth_mode, cipher, handle,
 			  peer_instance_id, responder,
-			  password_decoded ? password_decoded : password) < 0) {
+			  password_decoded ? password_decoded : password,
+			  true) < 0) {
 		str_clear_free(password_decoded);
 		wpa_printf(MSG_INFO, "NAN_PAIR: Pairing initiation failed");
 		return -1;

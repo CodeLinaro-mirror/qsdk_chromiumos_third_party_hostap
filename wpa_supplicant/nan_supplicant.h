@@ -48,7 +48,7 @@ void wpas_nan_data_interface_removed(struct wpa_supplicant *wpa_s);
 
 int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		  u8 auth_mode, int cipher, int handle, u8 peer_instance_id,
-		  bool responder, const char *password);
+		  bool responder, const char *password, bool auto_nik_exchange);
 int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,

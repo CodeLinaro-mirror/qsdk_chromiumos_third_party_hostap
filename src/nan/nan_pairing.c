@@ -715,7 +715,8 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   u8 auth_mode, int cipher, int handle,
 				   u8 peer_instance_id, bool responder,
 				   const char *password,
-				   const struct nan_schedule *sched)
+				   const struct nan_schedule *sched,
+				   bool auto_nik_exchange)
 {
 	int ret = 0;
 	struct pasn_data *pasn;
@@ -768,6 +769,7 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 	peer->pairing.handle = handle;
 	peer->pairing.peer_instance_id = peer_instance_id;
 	peer->pairing.flags = 0;
+	peer->pairing.auto_nik_exchange = auto_nik_exchange;
 
 	/* TODO: Add support for NAN element fragmentation if it's larger than
 	 * 255 octets, as defined in Wi-Fi Aware Specification v4.0 section 9.1.
@@ -1178,11 +1180,20 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 		 * timeout to avoid blocking the process. */
 		os_sleep(0, 30000);
 
-		if (nan_send_nik(nan, peer) < 0) {
+		/* Only send the NIK follow-up automatically when
+		 * auto_nik_exchange is enabled. When disabled, the upper layer
+		 * controls the NIK exchange.
+		 */
+		if (peer->pairing.auto_nik_exchange) {
+			if (nan_send_nik(nan, peer) < 0) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Pairing: Failed to send NIK");
+				nan_pairing_deinit_peer(peer);
+				return -1;
+			}
+		} else {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: Pairing: Failed to send NIK");
-			nan_pairing_deinit_peer(peer);
-			return -1;
+				   "NAN: Pairing: NIK send deferred to upper layer");
 		}
 	}
 
