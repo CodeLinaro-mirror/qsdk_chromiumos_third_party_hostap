@@ -4563,7 +4563,8 @@ struct wpa_driver_ops {
 	 * set_wds_sta - Bind a station into a 4-address WDS (AP only)
 	 * @priv: Private driver interface data
 	 * @addr: MAC address of the associated station
-	 * @aid: Association ID
+	 * @ifname_id: Interface name identifier - Association ID for non-MLO
+	 *	Used to generate unique WDS interface names (e.g., wlan0.sta%d).
 	 * @val: 1 = bind to 4-address WDS; 0 = unbind
 	 * @bridge_ifname: Bridge interface to use for the WDS station or %NULL
 	 *	to indicate that bridge is not to be used
@@ -4571,7 +4572,7 @@ struct wpa_driver_ops {
 	 *	station or %NULL to indicate name is not returned.
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*set_wds_sta)(void *priv, const u8 *addr, int aid, int val,
+	int (*set_wds_sta)(void *priv, const u8 *addr, int ifname_id, int val,
 			   const char *bridge_ifname, char *ifname_wds);
 
 	/**

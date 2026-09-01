@@ -415,7 +415,7 @@ int hostapd_vlan_if_remove(struct hostapd_data *hapd, const char *ifname)
 
 
 int hostapd_set_wds_sta(struct hostapd_data *hapd, char *ifname_wds,
-			const u8 *addr, int aid, int val)
+			const u8 *addr, int ifname_id, int val)
 {
 	const char *bridge = NULL;
 
@@ -425,7 +425,7 @@ int hostapd_set_wds_sta(struct hostapd_data *hapd, char *ifname_wds,
 		bridge = hapd->conf->wds_bridge;
 	else if (hapd->conf->bridge[0])
 		bridge = hapd->conf->bridge;
-	return hapd->driver->set_wds_sta(hapd->drv_priv, addr, aid, val,
+	return hapd->driver->set_wds_sta(hapd->drv_priv, addr, ifname_id, val,
 					 bridge, ifname_wds);
 }
 

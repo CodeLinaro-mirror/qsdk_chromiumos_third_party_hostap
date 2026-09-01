@@ -9397,12 +9397,13 @@ skip_update:
 	     !(sta->flags & WLAN_STA_WPS))) {
 		int ret;
 		char ifname_wds[IFNAMSIZ + 1];
+		int ifname_id = sta->aid;
 
 		wpa_printf(MSG_DEBUG, "Reenable 4-address WDS mode for STA "
-			   MACSTR " (aid %u)",
-			   MAC2STR(sta->addr), sta->aid);
+			   MACSTR " (ifname_id %u)",
+			   MAC2STR(sta->addr), ifname_id);
 		ret = hostapd_set_wds_sta(hapd, ifname_wds, sta->addr,
-					  sta->aid, 1);
+					  ifname_id, 1);
 		if (!ret)
 			hostapd_set_wds_encryption(hapd, sta, ifname_wds);
 	}
@@ -9765,6 +9766,8 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 	if (sta &&
 	    ((sta->flags & WLAN_STA_ASSOC) ||
 	     ((sta->flags & WLAN_STA_ASSOC_REQ_OK) && wds))) {
+		int ifname_id = sta->aid;
+
 		if (!hapd->conf->wds_sta)
 			return;
 
@@ -9783,11 +9786,11 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 			char ifname_wds[IFNAMSIZ + 1];
 
 			wpa_printf(MSG_DEBUG, "Enable 4-address WDS mode for "
-				   "STA " MACSTR " (aid %u)",
-				   MAC2STR(sta->addr), sta->aid);
+				   "STA " MACSTR " (ifname_id %u)",
+				   MAC2STR(sta->addr), ifname_id);
 			sta->flags |= WLAN_STA_WDS;
 			ret = hostapd_set_wds_sta(hapd, ifname_wds,
-						  sta->addr, sta->aid, 1);
+						  sta->addr, ifname_id, 1);
 			if (!ret)
 				hostapd_set_wds_encryption(hapd, sta,
 							   ifname_wds);
