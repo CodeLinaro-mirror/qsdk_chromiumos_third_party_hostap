@@ -1716,6 +1716,26 @@ def test_nan_sdf_dp_params(dev, apdev, params):
         if ev is None:
             raise Exception("NAN-REPLIED not seen (SDF dp params)")
 
+def test_nan_subscribe_sdea_cipher_suites(dev, apdev, params):
+    """NAN: cipher suite list in subscribe SDF (SDEA attribute)"""
+    with hwsim_nan_radios(count=2) as [wpas1, wpas2], \
+        NanDevice(wpas1, "nan0") as pub, NanDevice(wpas2, "nan1") as sub:
+        pid = pub.publish("test_sub_sdea", ssi="aabbccdd", unsolicited=0,
+                          cipher_suites=1)
+        sid = sub.subscribe("test_sub_sdea", ssi="ddbbccaa", cipher_suites=1)
+
+        ev = sub.wpas.wait_event(["NAN-DISCOVERY-RESULT"], timeout=5)
+        if ev is None:
+            raise Exception("NAN-DISCOVERY-RESULT not seen (subscribe SDEA cipher suites)")
+
+        data = split_nan_event(ev)
+        if "cipher_suites" not in data:
+            raise Exception(f"cipher_suites missing in discovery result: {ev}")
+
+        ev = pub.wpas.wait_event(["NAN-REPLIED"], timeout=2)
+        if ev is None:
+            raise Exception("NAN-REPLIED not seen (subscribe SDEA)")
+
 def nan_pre_bootstrap(pub, sub, pmb=0x1):
     paddr = pub.wpas.own_addr()
     saddr = sub.wpas.own_addr()
