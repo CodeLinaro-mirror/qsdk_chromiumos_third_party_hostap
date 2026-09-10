@@ -10430,10 +10430,17 @@ fail:
 }
 
 
-void nl80211_update_active_links(struct i802_bss *bss, int link_id)
+void nl80211_update_active_links(struct i802_bss *bss, int link_id,
+				 bool set_active_links)
 {
-	wpa_printf(MSG_DEBUG, "nl80211: Update link (ifindex=%d link_id=%u)",
-		   bss->ifindex, link_id);
+	wpa_printf(MSG_DEBUG, "nl80211: Update link (ifindex=%d link_id=%u %s)",
+		   bss->ifindex, link_id,
+		   set_active_links ? "START_AP" : "STOP_AP");
+
+	if (set_active_links) {
+		bss->active_links |= BIT(link_id);
+		return;
+	}
 
 	if (!(bss->active_links & BIT(link_id))) {
 		wpa_printf(MSG_DEBUG,
@@ -10474,7 +10481,7 @@ int nl80211_remove_link(struct i802_bss *bss, int link_id)
 
 	eloop_cancel_timeout(wpa_driver_nl80211_scan_timeout, drv, bss->ctx);
 	/* Clear the active links and set the flink */
-	nl80211_update_active_links(bss, link_id);
+	nl80211_update_active_links(bss, link_id, false);
 	bss->valid_links &= ~BIT(link_id);
 
 	if (bss->scan_link == link)
