@@ -11922,6 +11922,17 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_SET_UHR_TESTBED_DEFAULTS = 85,
 
+	/* 16-bit unsigned value to configure NAN WarmUp timer in seconds.
+	 *
+	 * This attribute configures NAN WarmUp timer so that NAN Device shall
+	 * set the Master Preference to a value greater than zero and shall
+	 * initialize and set a new random value for the Random Factor field
+	 * upon expiry of the NAN WarmUp timer.
+	 *
+	 * This configuration is used for testing purposes on NAN interface.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_NAN_WARMUP_TIMER = 86,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
