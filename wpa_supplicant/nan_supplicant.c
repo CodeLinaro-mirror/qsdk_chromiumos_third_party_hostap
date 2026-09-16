@@ -1114,8 +1114,14 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 
 	alg = cipher == WPA_CIPHER_CCMP ? WPA_ALG_CCMP : WPA_ALG_GCMP_256;
 	os_memset(seq, 0, sizeof(seq));
-	if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1, seq, sizeof(seq),
-			    ptk->tk, ptk->tk_len, KEY_FLAG_PAIRWISE_RX_TX)) {
+	/* Do not install NM-TK for non-cluster pairing. */
+	if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Skip NM-TK driver install for peer " MACSTR,
+			   MAC2STR(peer_addr));
+	} else if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1,
+				   seq, sizeof(seq), ptk->tk, ptk->tk_len,
+				   KEY_FLAG_PAIRWISE_RX_TX)) {
 		wpa_printf(MSG_INFO,
 			   "NAN: Failed to install NM-TK for peer " MACSTR,
 			   MAC2STR(peer_addr));
