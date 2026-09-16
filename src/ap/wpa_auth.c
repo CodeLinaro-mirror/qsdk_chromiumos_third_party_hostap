@@ -2506,10 +2506,11 @@ int wpa_auth_sm_event(struct wpa_state_machine *sm, enum wpa_event event)
 		break;
 	case WPA_REAUTH:
 	case WPA_REAUTH_EAPOL:
-		if (event == WPA_REAUTH && sm->auth_alg == WLAN_AUTH_EPPKE &&
-		    !sm->started) {
+		if (event == WPA_REAUTH && !sm->started &&
+		    (sm->auth_alg == WLAN_AUTH_EPPKE ||
+		     sm->auth_alg == WLAN_AUTH_802_1X)) {
 			wpa_printf(MSG_DEBUG,
-				   "EPPKE: Do not start state machine for a STA that has used EPPKE and reassociates");
+				   "Do not start state machine for a STA that reassociates after authentication in Authentication frames");
 			break;
 		}
 
