@@ -261,7 +261,7 @@ static void nan_del_peer(struct nan_data *nan, struct nan_peer *peer)
 	nan_ndl_reset(nan, peer);
 	nan_peer_flush_sec(&peer->info);
 	eloop_cancel_timeout(nan_peer_state_timeout, nan, peer);
-	nan_pairing_deinit_peer(peer);
+	nan_pairing_deinit_peer(nan, peer, true);
 	os_free(peer);
 }
 
@@ -1643,6 +1643,18 @@ bool nan_peer_no_shared_cluster(struct nan_data *nan, const u8 *addr)
 
 	peer = nan_get_peer(nan, addr);
 	return peer && peer->non_cluster;
+}
+
+
+bool nan_peer_nm_tk_installed(struct nan_data *nan, const u8 *addr)
+{
+	struct nan_peer *peer;
+
+	if (!nan || !addr)
+		return false;
+
+	peer = nan_get_peer(nan, addr);
+	return peer && peer->pairing.nm_tk_installed;
 }
 
 

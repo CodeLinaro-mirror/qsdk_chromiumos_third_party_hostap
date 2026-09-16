@@ -91,7 +91,8 @@ int nan_pairing_add_attrs(struct nan_data *nan, struct wpabuf *buf)
 }
 
 
-void nan_pairing_deinit_peer(struct nan_peer *peer)
+void nan_pairing_deinit_peer(struct nan_data *nan_data, struct nan_peer *peer,
+			     bool remove_nm_tk)
 {
 	wpabuf_free(peer->pairing.pending_auth1);
 	peer->pairing.pending_auth1 = NULL;
@@ -104,6 +105,19 @@ void nan_pairing_deinit_peer(struct nan_peer *peer)
 	peer->pairing.psi_model_name = NULL;
 	os_free(peer->pairing.psi_pairing_name);
 	peer->pairing.psi_pairing_name = NULL;
+
+	/* Remove the NM-TK from the driver only when the pairing did not
+	 * complete successfully. On the success path the key must remain
+	 * installed so that subsequent NAN Management frames are protected.
+	 * Callers that tear down a failed or aborted session pass true;
+	 * callers that clean up after a successful NIK exchange pass false.
+	 */
+	if (remove_nm_tk && peer->pairing.nm_tk_installed && nan_data &&
+	    nan_data->cfg->install_nm_tk)
+		nan_data->cfg->install_nm_tk(nan_data->cfg->cb_ctx,
+					     peer->nmi_addr, 0, NULL, 0);
+	if (remove_nm_tk)
+		peer->pairing.nm_tk_installed = false;
 
 	if (!peer->pairing.pasn)
 		return;
@@ -188,7 +202,7 @@ int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr)
 	}
 
 done:
-	nan_pairing_deinit_peer(peer);
+	nan_pairing_deinit_peer(nan_data, peer, true);
 	return ret;
 }
 
@@ -533,13 +547,17 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	pasn_register_callbacks(pasn, nan_data, nan_pairing_send_cb,
 				nan_validate_custom_pmkid, NULL, NULL);
 
+	/* The prepare callback is also used for clustered responder pairing to
+	 * install the NM-TK before M2 transmission.
+	 */
+	pasn->prepare_data_element = nan_pairing_prepare_data_element;
+
 	/* Register encrypted data callbacks to embed and parse the NIK
 	 * in PASN Authentication frames when the peer is not in a NAN cluster.
 	 */
 	if (nan_peer_no_shared_cluster(nan_data, peer->nmi_addr)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Registering encrypted data callbacks");
-		pasn->prepare_data_element = nan_pairing_prepare_data_element;
 		pasn->parse_data_element = nan_pairing_parse_data_element;
 	}
 
@@ -816,7 +834,7 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 
 	if (ret) {
 		wpa_printf(MSG_INFO, "NAN: Pairing: Failed to start PASN");
-		nan_pairing_deinit_peer(peer);
+		nan_pairing_deinit_peer(nan_data, peer, true);
 	}
 
 	return ret;
@@ -1190,7 +1208,7 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 						  peer->pairing.psi_pairing_name);
 		forced_memzero(nd_pmk, PMK_LEN);
 		if (pasn->status != WLAN_STATUS_SUCCESS || ret < 0) {
-			nan_pairing_deinit_peer(peer);
+			nan_pairing_deinit_peer(nan, peer, true);
 			return -1;
 		}
 
@@ -1213,7 +1231,7 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 			if (nan_send_nik(nan, peer) < 0) {
 				wpa_printf(MSG_DEBUG,
 					   "NAN: Pairing: Failed to send NIK");
-				nan_pairing_deinit_peer(peer);
+				nan_pairing_deinit_peer(nan, peer, true);
 				return -1;
 			}
 		} else {
@@ -1370,6 +1388,12 @@ static int nan_pairing_handle_auth_1(struct nan_data *nan_data,
 		return -1;
 	}
 
+	/* Re-arm the early TK install for each M1 (including retransmissions)
+	 * so that a new PTK derived from a fresh M1 is always pushed to the
+	 * driver before the corresponding M2 is sent.
+	 */
+	peer->pairing.nm_tk_installed = false;
+
 	pasn = peer->pairing.pasn;
 
 	if (nan_pairing_process_elems(nan_data, peer, mgmt, len, &cs)) {
@@ -1415,7 +1439,7 @@ static int nan_pairing_handle_auth_2(struct nan_data *nan_data,
 			nan_data->cfg->cb_ctx, peer->nmi_addr, pasn->akmp,
 			pasn->cipher, WLAN_STATUS_UNSPECIFIED_FAILURE, NULL,
 			NULL, NULL, NULL, NULL, NULL);
-		nan_pairing_deinit_peer(peer);
+		nan_pairing_deinit_peer(nan_data, peer, true);
 		return -1;
 	}
 
@@ -1465,7 +1489,7 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 					       peer->pairing.psi_pairing_name);
 	forced_memzero(nd_pmk, PMK_LEN);
 	if (ret < 0 || status != WLAN_STATUS_SUCCESS)
-		nan_pairing_deinit_peer(peer);
+		nan_pairing_deinit_peer(nan_data, peer, true);
 	else if (status == WLAN_STATUS_SUCCESS)
 		nan_pairing_done(nan_data, peer);
 
@@ -1553,7 +1577,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 					pasn ? pasn->cipher : 0,
 					status_code, NULL, NULL,
 					NULL, NULL, NULL, NULL);
-			nan_pairing_deinit_peer(peer);
+			nan_pairing_deinit_peer(nan_data, peer, true);
 			return -1;
 		}
 
@@ -1654,7 +1678,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 						 pasn->cipher, status_code,
 						 NULL, NULL,
 						 NULL, NULL, NULL, NULL);
-		nan_pairing_deinit_peer(peer);
+		nan_pairing_deinit_peer(nan_data, peer, true);
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Authentication rejected - status=%u",
 			   status_code);
@@ -1838,7 +1862,7 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 
 	ret = true;
 fail:
-	nan_pairing_deinit_peer(peer);
+	nan_pairing_deinit_peer(nan_data, peer, !ret);
 	wpabuf_free(key_data);
 	return ret;
 }
@@ -1973,7 +1997,7 @@ void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
 		   MAC2STR(peer->nmi_addr));
 
 	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
-	nan_pairing_deinit_peer(peer);
+	nan_pairing_deinit_peer(nan_data, peer, true);
 }
 
 
@@ -2071,8 +2095,11 @@ nan_pairing_build_nika(struct nan_data *nan_data, const struct nan_peer *peer,
 
 
 /*
- * nan_pairing_prepare_data_element - PASN callback to prepare encrypted data
- * for M2 (responder) or M3 (initiator). Only called for non-cluster peers.
+ * nan_pairing_prepare_data_element - PASN callback for pairing data
+ *
+ * For clustered responder pairing, install the NM-TK after PTK derivation and
+ * before M2 transmission. For non-cluster pairing, prepare the encrypted NIKA
+ * data element for M2 or M3.
  */
 static int nan_pairing_prepare_data_element(void *ctx, const u8 *peer_addr)
 {
@@ -2081,7 +2108,7 @@ static int nan_pairing_prepare_data_element(void *ctx, const u8 *peer_addr)
 	struct pasn_data *pasn;
 	struct wpabuf *wrapped_data = NULL;
 	struct wpabuf *extra_ies = NULL;
-	bool include_pairing_attrs;
+	bool include_pairing_attrs, is_non_cluster;
 	int ret = -1;
 
 	if (!nan_data || !peer_addr)
@@ -2091,19 +2118,32 @@ static int nan_pairing_prepare_data_element(void *ctx, const u8 *peer_addr)
 	if (!peer || !peer->pairing.pasn)
 		return -1;
 
-	/* Only for non-cluster peers */
-	if (!nan_peer_no_shared_cluster(nan_data, peer->nmi_addr))
-		return 0;
-
 	pasn = peer->pairing.pasn;
+	is_non_cluster =
+		nan_peer_no_shared_cluster(nan_data, peer->nmi_addr);
 	include_pairing_attrs =
 		peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER;
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN: prepare_data_element for non-cluster peer " MACSTR
+		   "NAN: prepare_data_element for peer " MACSTR
 		   " (role: %s)",
 		   MAC2STR(peer_addr),
 		   include_pairing_attrs ? "responder" : "initiator");
+
+	/* The NM-TK is not needed for non-cluster pairing. */
+	if (!is_non_cluster &&
+	    peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER &&
+	    !peer->pairing.nm_tk_installed && pasn->ptk.tk_len &&
+	    nan_data->cfg->install_nm_tk) {
+		if (nan_data->cfg->install_nm_tk(nan_data->cfg->cb_ctx,
+						 peer->nmi_addr, pasn->cipher,
+						 pasn->ptk.tk,
+						 pasn->ptk.tk_len) == 0)
+			peer->pairing.nm_tk_installed = true;
+	}
+
+	if (!is_non_cluster)
+		return 0;
 
 	/* Responder (M2): DCEA+CSIA+NIKA; Initiator (M3): NIKA only */
 	wrapped_data = nan_pairing_build_nika(nan_data, peer,

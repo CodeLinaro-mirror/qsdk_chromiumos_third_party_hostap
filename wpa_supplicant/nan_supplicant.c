@@ -1083,6 +1083,60 @@ static int wpas_nan_pasn_send_cb(void *ctx, const u8 *data, size_t data_len,
 }
 
 
+/*
+ * wpas_nan_install_nm_tk_cb - Install the NM-TK in the driver
+ *
+ * Called by the NAN pairing layer before PASN M2 is transmitted (responder
+ * path). The PTK is already derived at this point (pasn_derive_keys() has run),
+ * so the driver can set up the pairwise key entry before the peer sends M3.
+ * Some firmware require the key to be present before they will accept
+ * subsequent NAN management frames from the peer.
+ *
+ * Non-cluster pairing does not require a driver key entry. The caller decides
+ * whether a driver failure is fatal for the current handshake.
+ */
+static int wpas_nan_install_nm_tk_cb(void *ctx, const u8 *peer_addr,
+				     int cipher, const u8 *tk, size_t tk_len)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+	enum wpa_alg alg;
+	u8 seq[6];
+
+	if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Skip NM-TK driver install for peer "
+			   MACSTR, MAC2STR(peer_addr));
+		return 0;
+	}
+
+	/* A NULL tk signals key removal after a failed early install. */
+	if (!tk || !tk_len) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Remove NM-TK from the driver for peer " MACSTR,
+			   MAC2STR(peer_addr));
+		wpa_drv_set_key(wpa_s, -1, WPA_ALG_NONE, peer_addr, 0, 0,
+				NULL, 0, NULL, 0, KEY_FLAG_PAIRWISE);
+		return 0;
+	}
+
+	alg = cipher == WPA_CIPHER_CCMP ? WPA_ALG_CCMP : WPA_ALG_GCMP_256;
+	os_memset(seq, 0, sizeof(seq));
+
+	if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1,
+			    seq, sizeof(seq), tk, tk_len,
+			    KEY_FLAG_PAIRWISE_RX_TX)) {
+		wpa_printf(MSG_DEBUG, "NAN: Failed to install NM-TK for peer "
+			   MACSTR, MAC2STR(peer_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: NM-TK installed before PASN M2 TX for peer " MACSTR,
+		   MAC2STR(peer_addr));
+	return 0;
+}
+
+
 static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 					int akmp, int cipher, u16 status,
 					struct wpa_ptk *ptk, const u8 *nd_pmk,
@@ -1094,9 +1148,6 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 	struct wpa_supplicant *wpa_s = ctx;
 
 	if (status == WLAN_STATUS_SUCCESS) {
-		enum wpa_alg alg;
-		u8 seq[6];
-
 		if (!ptk) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: No PTK provided after pairing with peer "
@@ -1104,23 +1155,11 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 			return -1;
 		}
 
-		alg = cipher == WPA_CIPHER_CCMP ?
-			WPA_ALG_CCMP : WPA_ALG_GCMP_256;
-		os_memset(seq, 0, sizeof(seq));
-		/* Do not install NM-TK for non-cluster pairing. */
-		if (nan_peer_no_shared_cluster(wpa_s->nan, peer_addr)) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Skip NM-TK driver install for peer "
-				   MACSTR, MAC2STR(peer_addr));
-		} else if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1,
-					   seq, sizeof(seq), ptk->tk,
-					   ptk->tk_len,
-					   KEY_FLAG_PAIRWISE_RX_TX)) {
-			wpa_printf(MSG_INFO,
-				   "NAN: Failed to install NM-TK for peer "
-				   MACSTR, MAC2STR(peer_addr));
+		if (!nan_peer_nm_tk_installed(wpa_s->nan, peer_addr) &&
+		    wpas_nan_install_nm_tk_cb(wpa_s, peer_addr,
+					      cipher, ptk->tk,
+					      ptk->tk_len) < 0)
 			return -1;
-		}
 
 		nan_peer_store_pairing_tk(wpa_s->nan, peer_addr,
 					  ptk->tk, ptk->tk_len);
@@ -1390,6 +1429,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	wpa_printf(MSG_DEBUG, "NAN: Pairing support enabled");
 	nan.send_pasn = wpas_nan_pasn_send_cb;
 	nan.pairing_result_cb = wpas_nan_pasn_auth_status_cb;
+	nan.install_nm_tk = wpas_nan_install_nm_tk_cb;
 	nan.update_pairing_credentials = wpas_nan_update_pairing_credentials_cb;
 	nan.get_npk_akmp = wpas_nan_get_npk_akmp_cb;
 	nan.pairing_request = wpas_nan_pasn_pairing_request_cb;

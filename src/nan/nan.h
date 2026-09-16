@@ -749,6 +749,25 @@ struct nan_config {
 				 const char *psi_pairing_name);
 
 	/**
+	 * install_nm_tk - Install the NM-TK in the driver before M2 TX
+	 * @ctx: Callback context from cb_ctx
+	 * @peer_addr: Peer NMI address
+	 * @cipher: Cipher suite (WPA_CIPHER_CCMP or WPA_CIPHER_GCMP_256)
+	 * @tk: Temporal key material
+	 * @tk_len: Length of tk in octets
+	 * Returns: 0 on success or when installation is skipped, -1 on failure
+	 *
+	 * Called by the pairing responder inside prepare_data_element(), which
+	 * fires after pasn_derive_keys() but before M2 is transmitted. This
+	 * gives the driver the pairwise key entry before the peer sends M3,
+	 * which some firmware require to accept the subsequent NAN management
+	 * frames. The responder's early-install path may continue after a
+	 * failure; the pairing status callback handles the final result.
+	 */
+	int (*install_nm_tk)(void *ctx, const u8 *peer_addr, int cipher,
+			     const u8 *tk, size_t tk_len);
+
+	/**
 	 * update_pairing_credentials - Report received NIK and NPK for a peer
 	 * @ctx: Callback context from cb_ctx
 	 * @nik: NAN Identity Key received from peer
@@ -858,6 +877,7 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 		 const u8 *a3, unsigned int freq,
 		 const u8 *device_attrs, size_t device_attrs_len);
 bool nan_peer_no_shared_cluster(struct nan_data *nan, const u8 *addr);
+bool nan_peer_nm_tk_installed(struct nan_data *nan, const u8 *addr);
 bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
 			  size_t len, u8 req_instance_id, int handle);
 int nan_bootstrap_request(struct nan_data *nan, int handle,

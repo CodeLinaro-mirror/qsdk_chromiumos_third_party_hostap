@@ -558,6 +558,8 @@ struct nan_pairing_peer_data {
 	/* TK from the most recent successful pairing PASN exchange */
 	u8 tk[NAN_TK_MAX_LEN];
 	size_t tk_len;
+	/* True when the NM-TK was installed before M2 transmission. */
+	bool nm_tk_installed;
 	bool auto_nik_exchange;
 };
 
@@ -891,7 +893,8 @@ void nan_add_kde_hdr(struct wpabuf *buf, u32 kde, size_t data_len);
 int nan_clear_peer_schedule(struct nan_data *nan, struct nan_peer *peer);
 #ifdef CONFIG_PASN
 int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nonce, u8 *tag);
-void nan_pairing_deinit_peer(struct nan_peer *peer);
+void nan_pairing_deinit_peer(struct nan_data *nan_data, struct nan_peer *peer,
+			     bool remove_nm_tk);
 bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 			     const struct nan_shared_key *shared_key_descr,
 			     size_t attr_len);
@@ -902,7 +905,9 @@ int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nonce, u8 *tag)
 	return -1;
 }
 
-static inline void nan_pairing_deinit_peer(struct nan_peer *peer)
+static inline void nan_pairing_deinit_peer(struct nan_data *nan_data,
+					   struct nan_peer *peer,
+					   bool remove_nm_tk)
 {
 }
 #endif /* CONFIG_PASN */
