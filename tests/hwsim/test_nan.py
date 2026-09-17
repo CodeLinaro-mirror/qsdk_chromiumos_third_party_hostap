@@ -435,12 +435,12 @@ def nan_ndp_verify_event(ev, peer_nmi, publish_inst_id=None, init_ndi=None,
 def nan_sync_discovery(pub, sub, service_name, pssi, sssi,
                        unsolicited=1, solicited=1, active=1,
                        expect_discovery=True,
-                       timeout=2):
+                       timeout=2, cipher_suites=None):
     paddr = pub.wpas.own_addr()
     saddr = sub.wpas.own_addr()
 
     pid = pub.publish(service_name, ssi=pssi, unsolicited=unsolicited,
-                      solicited=solicited)
+                      solicited=solicited, cipher_suites=cipher_suites)
     sid = sub.subscribe(service_name, ssi=sssi, active=active)
 
     logger.info(f"Publish ID: {pid}, Subscribe ID: {sid}")
@@ -2191,6 +2191,20 @@ def test_nan_opportunistic_pairing(dev, apdev, params):
 def test_nan_sae_pairing(dev, apdev, params):
     """NAN Pairing setup using a password (SAE)"""
     run_nan_pairing_verification("SAE", "nanpassword")
+
+def test_nan_sae_pairing_with_cipher_list(dev, apdev, params):
+    """NAN SAE pairing with a two-entry PASN-capable cipher list"""
+    with hwsim_nan_radios(count=2) as [wpas1, wpas2], \
+        NanDevice(wpas1, "nan0") as pub, NanDevice(wpas2, "nan1") as sub:
+        pid, sid, _, _ = nan_sync_discovery(
+            pub, sub, "test_service_two_cipher",
+            pssi="aabbccdd", sssi="ddbbccaa", unsolicited=0,
+            cipher_suites="1,8")
+
+        run_nan_pairing(sub, pub, pid, sid, "SAE", "nanpassword")
+
+        pub.cancel_publish(pid)
+        sub.cancel_subscribe(sid)
 
 def test_nan_prot_ucast_followup_after_verification(dev, apdev, params):
     """NAN protected unicast follow-up after pairing verification"""
