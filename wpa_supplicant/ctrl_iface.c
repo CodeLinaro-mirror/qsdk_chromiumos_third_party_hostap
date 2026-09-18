@@ -14899,6 +14899,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "NAN_PAIR_ABORT ", 15) == 0) {
 		if (wpas_nan_pairing_abort(wpa_s, buf + 15) < 0)
 			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_SEND_NIK ", 13) == 0) {
+		if (wpas_nan_send_nik(wpa_s, buf + 13) < 0)
+			reply_len = -1;
 #endif /* CONFIG_PASN */
 #endif /* CONFIG_NAN */
 	} else {

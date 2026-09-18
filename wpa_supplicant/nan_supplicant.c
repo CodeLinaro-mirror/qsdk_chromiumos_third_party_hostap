@@ -4203,6 +4203,7 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
  * Format: NAN_PAIR <peer_nmi> <handle=<id>>
  *	<peer_instance_id=<id>> <auth=<0|1|2>> <cipher=<CCMP|GCMP-256>>
  *	[responder] [password=<password>|pwd_hex=<hex>]
+ *	[auto_nik_exchange=<0|1>]
  */
 int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 {
@@ -4215,6 +4216,7 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 	char *password = NULL, *password_hex = NULL;
 	char *password_decoded = NULL;
 	bool responder = false;
+	bool auto_nik_exchange = true;
 	char *pos;
 
 	/* Parse peer address first */
@@ -4257,6 +4259,8 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 			password = token + 9;
 		} else if (os_strncmp(token, "pwd_hex=", 8) == 0) {
 			password_hex = token + 8;
+		} else if (os_strncmp(token, "auto_nik_exchange=", 18) == 0) {
+			auto_nik_exchange = atoi(token + 18) != 0;
 		} else {
 			wpa_printf(MSG_INFO,
 				   "NAN_PAIR: Invalid parameter: '%s'",
@@ -4296,7 +4300,7 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 	if (wpas_nan_pair(wpa_s, addr, auth_mode, cipher, handle,
 			  peer_instance_id, responder,
 			  password_decoded ? password_decoded : password,
-			  true) < 0) {
+			  auto_nik_exchange) < 0) {
 		str_clear_free(password_decoded);
 		wpa_printf(MSG_INFO, "NAN_PAIR: Pairing initiation failed");
 		return -1;
@@ -4336,6 +4340,37 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd)
 	if (nan_pairing_abort(nan, addr) < 0) {
 		wpa_printf(MSG_INFO,
 			   "NAN_PAIR_ABORT: Abort failed for peer " MACSTR,
+			   MAC2STR(addr));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/*
+ * Format: NAN_SEND_NIK <peer_nmi>
+ *
+ * Explicitly trigger the deferred NIK follow-up to a peer.
+ */
+int wpas_nan_send_nik(struct wpa_supplicant *wpa_s, const char *cmd)
+{
+	u8 addr[ETH_ALEN];
+
+	if (!wpa_s->nan) {
+		wpa_printf(MSG_INFO, "NAN_SEND_NIK: NAN not initialized");
+		return -1;
+	}
+
+	if (hwaddr_aton(cmd, addr) < 0) {
+		wpa_printf(MSG_INFO,
+			   "NAN_SEND_NIK: Invalid peer address: '%s'", cmd);
+		return -1;
+	}
+
+	if (nan_send_nik_for_peer(wpa_s->nan, addr) < 0) {
+		wpa_printf(MSG_INFO,
+			   "NAN_SEND_NIK: Failed to send NIK to " MACSTR,
 			   MAC2STR(addr));
 		return -1;
 	}

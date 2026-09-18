@@ -51,6 +51,7 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		  bool responder, const char *password, bool auto_nik_exchange);
 int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd);
+int wpas_nan_send_nik(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_get_sae_pairing_tk(struct wpa_supplicant *wpa_s, const char *cmd,
 				char *buf, size_t buflen);
 int wpas_nan_get_sae_pairing_pmkid(struct wpa_supplicant *wpa_s,

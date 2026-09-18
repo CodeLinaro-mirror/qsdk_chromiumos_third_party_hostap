@@ -1053,6 +1053,31 @@ static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 }
 
 
+/**
+ * nan_send_nik_for_peer - Send the NIK follow-up to a peer by address
+ * @nan_data: NAN module context
+ * @peer_addr: Peer NMI address
+ * Returns: 0 on success, -1 on failure
+ */
+int nan_send_nik_for_peer(struct nan_data *nan_data, const u8 *peer_addr)
+{
+	struct nan_peer *peer;
+
+	if (!nan_data || !peer_addr)
+		return -1;
+
+	peer = nan_get_peer(nan_data, peer_addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: send_nik_for_peer: Peer " MACSTR
+			   " not known", MAC2STR(peer_addr));
+		return -1;
+	}
+
+	return nan_send_nik(nan_data, peer);
+}
+
+
 static int nan_pairing_derive_nd_pmk(struct nan_data *nan_data,
 				     struct nan_peer *peer, u8 *nd_pmk)
 {

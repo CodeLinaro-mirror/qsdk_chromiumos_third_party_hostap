@@ -959,6 +959,7 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   const char *password,
 				   const struct nan_schedule *sched,
 				   bool auto_nik_exchange);
+int nan_send_nik_for_peer(struct nan_data *nan_data, const u8 *peer_addr);
 int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 				    size_t data_len, bool acked);
 int nan_pairing_auth_rx(struct nan_data *nan_data,
@@ -987,6 +988,12 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   const char *password,
 				   const struct nan_schedule *sched,
 				   bool auto_nik_exchange)
+{
+	return -1;
+}
+
+static inline int nan_send_nik_for_peer(struct nan_data *nan_data,
+					const u8 *peer_addr)
 {
 	return -1;
 }
