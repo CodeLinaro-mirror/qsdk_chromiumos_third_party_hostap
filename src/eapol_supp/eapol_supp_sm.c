@@ -2119,9 +2119,13 @@ static void eapol_sm_set_anon_id(void *ctx, const u8 *id, size_t len)
 
 static bool eapol_sm_eap_in_auth_frames(void *ctx)
 {
+#ifdef CONFIG_IEEE8021X_AUTH
 	struct eapol_sm *sm = ctx;
 
 	return sm->eap_over_auth_frame;
+#else /* CONFIG_IEEE8021X_AUTH */
+	return false;
+#endif /* CONFIG_IEEE8021X_AUTH */
 }
 
 
