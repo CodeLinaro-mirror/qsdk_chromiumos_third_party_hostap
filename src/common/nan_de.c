@@ -191,6 +191,15 @@ bool nan_de_is_p2p_network_id(const u8 *addr)
 }
 
 
+static struct nan_de_service * nan_de_get_service(const struct nan_de *de,
+						  int id)
+{
+	if (id < 1 || id > NAN_DE_MAX_SERVICE)
+		return NULL;
+	return de->service[id - 1];
+}
+
+
 struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
 			    unsigned int max_listen,
 			    const struct nan_callbacks *cb)
@@ -3124,9 +3133,7 @@ const u8 * nan_de_get_service_id(struct nan_de *de, int id)
 {
 	struct nan_de_service *srv;
 
-	if (id < 1 || id > NAN_DE_MAX_SERVICE)
-		return NULL;
-	srv = de->service[id - 1];
+	srv = nan_de_get_service(de, id);
 	if (!srv)
 		return NULL;
 	return srv->service_id;
@@ -3326,9 +3333,7 @@ void nan_de_cancel_publish(struct nan_de *de, int publish_id)
 
 	wpa_printf(MSG_DEBUG, "NAN: CancelPublish(publish_id=%d)", publish_id);
 
-	if (publish_id < 1 || publish_id > NAN_DE_MAX_SERVICE)
-		return;
-	srv = de->service[publish_id - 1];
+	srv = nan_de_get_service(de, publish_id);
 	if (!srv || srv->type != NAN_DE_PUBLISH)
 		return;
 	nan_de_del_srv(de, srv, NAN_DE_REASON_USER_REQUEST);
@@ -3342,9 +3347,7 @@ int nan_de_update_publish(struct nan_de *de, int publish_id,
 
 	wpa_printf(MSG_DEBUG, "NAN: UpdatePublish(publish_id=%d)", publish_id);
 
-	if (publish_id < 1 || publish_id > NAN_DE_MAX_SERVICE)
-		return -1;
-	srv = de->service[publish_id - 1];
+	srv = nan_de_get_service(de, publish_id);
 	if (!srv || srv->type != NAN_DE_PUBLISH)
 		return -1;
 
@@ -3369,9 +3372,7 @@ int nan_de_unpause_publish(struct nan_de *de, int publish_id,
 		   MACSTR ")",
 		   publish_id, peer_instance_id, MAC2STR(peer_addr));
 
-	if (publish_id < 1 || publish_id > NAN_DE_MAX_SERVICE)
-		return -1;
-	srv = de->service[publish_id - 1];
+	srv = nan_de_get_service(de, publish_id);
 	if (!srv || srv->type != NAN_DE_PUBLISH)
 		return -1;
 
@@ -3618,10 +3619,7 @@ int nan_de_get_pbea_info(struct nan_de *de, int handle, u16 *extended_pbm,
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return -1;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return -1;
 
@@ -3645,9 +3643,7 @@ void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id)
 {
 	struct nan_de_service *srv;
 
-	if (subscribe_id < 1 || subscribe_id > NAN_DE_MAX_SERVICE)
-		return;
-	srv = de->service[subscribe_id - 1];
+	srv = nan_de_get_service(de, subscribe_id);
 	if (!srv || srv->type != NAN_DE_SUBSCRIBE)
 		return;
 	nan_de_del_srv(de, srv, NAN_DE_REASON_USER_REQUEST);
@@ -3665,10 +3661,7 @@ int nan_de_transmit(struct nan_de *de, int handle,
 	const u8 *network_id;
 	unsigned int tx_wait;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return -1;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return -1;
 
@@ -3717,10 +3710,7 @@ int nan_de_stop_listen(struct nan_de *de, int handle)
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return -1;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return -1;
 	srv->listen_stopped = true;
@@ -3963,10 +3953,7 @@ bool nan_de_is_valid_instance_id(struct nan_de *de, int handle,
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return false;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return false;
 
@@ -3984,10 +3971,7 @@ u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle)
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return 0;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return 0;
 
@@ -3999,10 +3983,7 @@ const int * nan_de_get_cipher_suites_list(struct nan_de *de, int handle)
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return NULL;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return NULL;
 
@@ -4014,10 +3995,7 @@ bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid)
 {
 	struct nan_de_service *srv;
 
-	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
-		return false;
-
-	srv = de->service[handle - 1];
+	srv = nan_de_get_service(de, handle);
 	if (!srv)
 		return false;
 
