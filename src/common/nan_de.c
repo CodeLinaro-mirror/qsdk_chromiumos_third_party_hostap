@@ -3123,6 +3123,31 @@ const u8 * nan_de_get_service_id(struct nan_de *de, int id)
 }
 
 
+static int nan_de_set_cs_list(struct nan_de_service *srv,
+			      const int *cs_list)
+{
+	int i;
+
+	if (!cs_list)
+		return 0;
+
+	for (i = 0; cs_list[i] && i < NAN_CS_MAX; i++) {
+		if (cs_list[i] >= NAN_CS_MAX) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Invalid cipher suite %d for service",
+				   cs_list[i]);
+			return -1;
+		}
+	}
+
+	srv->cipher_suites_list = int_array_dup(cs_list);
+	if (!srv->cipher_suites_list)
+		return -1;
+
+	return 0;
+}
+
+
 int nan_de_publish(struct nan_de *de, const char *service_name,
 		   enum nan_service_protocol_type srv_proto_type,
 		   const struct wpabuf *ssi, const struct wpabuf *elems,
@@ -3251,25 +3276,8 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 
 	srv->security_capab = params->security_capab;
 
-	if (params->cipher_suites_list) {
-		int i = 0;
-
-		while (params->cipher_suites_list[i] && i < NAN_CS_MAX) {
-			if (params->cipher_suites_list[i] >= NAN_CS_MAX) {
-				wpa_printf(MSG_DEBUG,
-					   "NAN: Invalid cipher suite %d in publish",
-					   params->cipher_suites_list[i]);
-				goto fail;
-			}
-
-			i++;
-		}
-
-		srv->cipher_suites_list =
-			int_array_dup(params->cipher_suites_list);
-		if (!srv->cipher_suites_list)
-			goto fail;
-	}
+	if (nan_de_set_cs_list(srv, params->cipher_suites_list) < 0)
+		goto fail;
 
 #ifdef CONFIG_NAN
 	if (nan_crypto_pmkid_list(&srv->pmkid_list, de->nmi, srv->service_id,
