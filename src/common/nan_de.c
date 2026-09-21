@@ -3169,6 +3169,7 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 	srv = os_zalloc(sizeof(*srv));
 	if (!srv)
 		return -1;
+	dl_list_init(&srv->pmkid_list);
 	srv->type = NAN_DE_PUBLISH;
 	srv->freq = srv->default_freq = params->freq;
 
@@ -3270,7 +3271,6 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 			goto fail;
 	}
 
-	dl_list_init(&srv->pmkid_list);
 #ifdef CONFIG_NAN
 	if (nan_crypto_pmkid_list(&srv->pmkid_list, de->nmi, srv->service_id,
 				  srv->cipher_suites_list, params->nd_pmk) < 0)
@@ -3467,6 +3467,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 	srv = os_zalloc(sizeof(*srv));
 	if (!srv)
 		return -1;
+	dl_list_init(&srv->pmkid_list);
 	srv->type = NAN_DE_SUBSCRIBE;
 	srv->freq = params->freq;
 
@@ -3568,8 +3569,6 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		wpa_printf(MSG_DEBUG, "NAN: Using source address " MACSTR
 			   " for subscribe service", MAC2STR(srv->forced_addr));
 	}
-
-	dl_list_init(&srv->pmkid_list);
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",
 		   subscribe_id, service_name ? service_name : "Ranging");
