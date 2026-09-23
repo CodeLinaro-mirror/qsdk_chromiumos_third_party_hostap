@@ -1589,7 +1589,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 
 	buf = get_vendor_ie(mgmt->u.auth.variable,
 			    len - offsetof(struct ieee80211_mgmt,
-				   u.auth.variable),
+					   u.auth.variable),
 			    NAN_IE_VENDOR_TYPE);
 	if (!buf) {
 		wpa_printf(MSG_DEBUG,
@@ -1711,10 +1711,6 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 						 nan_data->cfg->nmi_addr, peer,
 						 mgmt, len);
 	}
-	if (auth_transaction == 2)
-		return nan_pairing_handle_auth_2(nan_data, peer, mgmt, len);
-	if (auth_transaction == 3)
-		return nan_pairing_handle_auth_3(nan_data, peer, mgmt, len);
 
 	return -1;
 }
