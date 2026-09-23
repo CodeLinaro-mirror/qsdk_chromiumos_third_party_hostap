@@ -854,6 +854,9 @@ static void sme_check_802_1x_pmksa_caching(struct wpa_supplicant *wpa_s,
 	const u8 *peer_addr;
 	int key_mgmt;
 
+	if (!bss)
+		return;
+
 	peer_addr = sme_get_peer_addr(wpa_s, external);
 	key_mgmt = sme_get_key_mgmt(wpa_s, external);
 
