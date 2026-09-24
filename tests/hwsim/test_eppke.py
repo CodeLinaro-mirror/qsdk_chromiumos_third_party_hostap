@@ -573,27 +573,29 @@ def test_eppke_ap_gtk_rekey_with_base_akm_sae_ext_key_two_link(dev, apdev):
             raise Exception("GTK rekey timed out")
         hwsim_utils.test_connectivity(wpas, hapd0)
 
-def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client(dev, apdev):
-    """EPPKE AP and PTK rekey"""
+def run_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client(dev, apdev,
+                                                                group=None):
     check_eppke_capab(dev[0])
     ssid = "test-eppke-authentication"
     passphrase = '1234567890'
-    params = hostapd.wpa3_params(ssid=ssid,
-				 password = passphrase)
-    params['wpa_key_mgmt'] = params['wpa_key_mgmt'] + ' ' + 'SAE-EXT-KEY EPPKE'
+    params = hostapd.wpa3_params(ssid=ssid, password=passphrase,
+                                 wpa_key_mgmt='SAE-EXT-KEY EPPKE')
     params['assoc_frame_encryption'] = '1'
     params['pmksa_caching_privacy'] = '1'
-    params['eap_using_authentication_frames'] = '1'
-    params['sae_pwe'] = '2'
+    params['sae_pwe'] = '1'
     params['wpa_ptk_rekey'] = '2'
+    if group:
+        params['pasn_groups'] = str(group)
     hapd = hostapd.add_ap(apdev[0], params)
 
     try:
-        dev[0].set("pasn_groups", "")
+        dev[0].set("pasn_groups", str(group) if group else "")
         dev[0].set("sae_pwe", "1")
         dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
                        key_mgmt="SAE-EXT-KEY EPPKE", ieee80211w="2",
                        beacon_prot="1", pairwise="CCMP")
+        s = wpas.get_status()
+        eppke_check_key_len(group if group else 19, s, "initial")
         hapd.wait_sta();
         sta = hapd.get_sta(dev[0].own_addr())
         if sta["AKMSuiteSelector"] != '00-0f-ac-24' or sta["auth_alg"] != '9':
@@ -603,11 +605,29 @@ def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client(dev, apdev):
         ev = dev[0].wait_event(["WPA: Key negotiation completed"])
         if ev is None:
             raise Exception("PTK rekey timed out")
+        s = wpas.get_status()
+        eppke_check_key_len(group if group else 19, s, "rekey")
         hwsim_utils.test_connectivity(dev[0], hapd)
 
     finally:
         dev[0].set("pasn_groups", "")
         dev[0].set("sae_pwe", "0")
+
+def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client(dev, apdev):
+    """EPPKE AP and PTK rekey"""
+    run_eppke_sae_ptk_rekey(dev, apdev, None)
+
+def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client_19(dev, apdev):
+    """EPPKE AP and PTK rekey - group 19"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 19)
+
+def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client_20(dev, apdev):
+    """EPPKE AP and PTK rekey - group 20"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 20)
+
+def test_eppke_ap_ptk_rekey_with_base_akm_sae_ext_non_mld_client_21(dev, apdev):
+    """EPPKE AP and PTK rekey - group 21"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 21)
 
 def test_eppke_ap_with_non_eppke_non_mld_client(dev, apdev):
     """Negative test: SAE authentication with an EPPKE AP and non-EPPKE non-MLD client"""
@@ -1256,6 +1276,33 @@ def test_eppke_without_base_akm_mld_ap(dev, apdev):
             raise HwsimSkip("MLD not supported")
         raise
 
+def eppke_check_key_len(group, vals, text):
+    pmk_len = 32
+    kck_len = 32
+    if group == 19:
+        kek_len = 16
+        mic_len = 16
+    elif group == 20:
+        kek_len = 32
+        mic_len = 24
+    if group == 21:
+        kek_len = 32
+        mic_len = 32
+
+    pmk = int(vals['pmk_len'])
+    kck = int(vals['kck_len'])
+    kek = int(vals['kek_len'])
+    mic = int(vals['mic_len'])
+
+    if pmk_len != pmk:
+        raise Exception("Unexpected PMK length: %u != %u (%s)" % (pmk, pmk_len, text))
+    if kck_len != kck:
+        raise Exception("Unexpected KCK length: %u != %u (%s)" % (kck, kck_len, text))
+    if kek_len != kek:
+        raise Exception("Unexpected KEK length: %u != %u (%s)" % (kek, kek_len, text))
+    if mic_len != mic:
+        raise Exception("Unexpected MIC length: %u != %u (%s)" % (mic, mic_len, text))
+
 def run_eppke_without_base_akm_with_rekey(dev, apdev, group, gtk=False,
                                           ptk=False):
     """EPPKE authentication without base AKM with GTK/PTK rekey and different groups"""
@@ -1296,6 +1343,8 @@ def run_eppke_without_base_akm_with_rekey(dev, apdev, group, gtk=False,
             wpas.set("pasn_groups", str(group))
             wpas.connect(ssid, scan_freq="2412 2437", key_mgmt="EPPKE",
                          ieee80211w="2", beacon_prot="1", pairwise="CCMP")
+            s = wpas.get_status()
+            eppke_check_key_len(group, s, "initial")
             eht_verify_status(wpas, hapd0, 2412, 20, is_ht=True, mld=True,
                               valid_links=3, active_links=3)
             hapd0.wait_sta()
@@ -1316,6 +1365,8 @@ def run_eppke_without_base_akm_with_rekey(dev, apdev, group, gtk=False,
                   raise Exception("PTK rekey timed out")
 
             hwsim_utils.test_connectivity(wpas, hapd0)
+            s = wpas.get_status()
+            eppke_check_key_len(group, s, "rekey")
     except Exception as e:
         if "MLD not supported" in str(e) or "Failed to add" in str(e):
             raise HwsimSkip("MLD not supported")
@@ -1476,3 +1527,67 @@ def test_eppke_rsno(dev, apdev):
         dev[0].set("pasn_groups", "")
         dev[0].set("sae_pwe", "0")
         dev[0].set("rsn_overriding", "0")
+
+def run_eppke_sae_ptk_rekey(dev, apdev, group):
+    check_eppke_capab(dev[0])
+    ssid = "test-eppke-authentication"
+    passphrase = '1234567890'
+    params = hostapd.wpa3_params(ssid=ssid, password=passphrase,
+                                 wpa_key_mgmt='SAE-EXT-KEY EPPKE')
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['sae_pwe'] = '2'
+    params['wpa_ptk_rekey'] = '2'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].set("sae_pwe", "1")
+        dev[0].set("preassoc_mac_addr", "1")
+        dev[0].set("rand_addr_lifetime", "0")
+        dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
+                       key_mgmt="SAE-EXT-KEY EPPKE", ieee80211w="2",
+                       beacon_prot="1", pairwise="CCMP", pmksa_privacy="1",
+                       mac_addr="1")
+        hapd.wait_sta();
+        sta = hapd.get_sta(dev[0].own_addr())
+        if sta["AKMSuiteSelector"] != '00-0f-ac-24' or sta["auth_alg"] != '9':
+            raise Exception("Incorrect Auth Algo/AKMSuiteSelector value")
+        hwsim_utils.test_connectivity(dev[0], hapd)
+
+        for i in range(3):
+            prev_addr = dev[0].own_addr()
+            dev[0].request("DISCONNECT")
+            dev[0].wait_disconnected()
+            # Let driver fully process disconnect before MAC address change
+            time.sleep(0.5)
+            dev[0].request("RECONNECT")
+            dev[0].wait_connected(timeout=15, error="Reconnect timed out")
+            new_addr = dev[0].own_addr()
+            if new_addr == prev_addr:
+                raise Exception("MAC address did not change on iteration %d" % i)
+            val = dev[0].get_status_field('sae_group')
+            if val is not None:
+                raise Exception("SAE group claimed to have been used: " + val)
+            sta = hapd.get_sta(new_addr)
+            if sta['auth_alg'] != '9' or sta['AKMSuiteSelector'] != '00-0f-ac-24':
+                raise Exception("Incorrect Auth Algo/AKMSuiteSelector value after PMKSA caching")
+            hwsim_utils.test_connectivity(dev[0], hapd)
+
+    finally:
+        dev[0].set("pasn_groups", "")
+        dev[0].set("preassoc_mac_addr", "0")
+        dev[0].set("rand_addr_lifetime", "60")
+        dev[0].set("sae_pwe", "0")
+
+def test_eppke_sae_ptk_rekey_group_19(dev, apdev):
+    """EPPKE[SAE] authentication and PTK rekeying with group 19"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 19)
+
+def test_eppke_sae_ptk_rekey_group_20(dev, apdev):
+    """EPPKE[SAE] authentication and PTK rekeying with group 20"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 20)
+
+def test_eppke_sae_ptk_rekey_group_21(dev, apdev):
+    """EPPKE[SAE] authentication and PTK rekeying with group 21"""
+    run_eppke_sae_ptk_rekey(dev, apdev, 21)
