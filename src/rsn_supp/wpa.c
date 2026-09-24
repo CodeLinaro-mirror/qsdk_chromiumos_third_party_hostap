@@ -5334,6 +5334,7 @@ int wpa_sm_get_status(struct wpa_sm *sm, char *buf, size_t buflen,
 	int ret;
 	const u8 *rsne;
 	size_t rsne_len;
+	size_t mic_len;
 
 	rsne = wpa_sm_get_ap_rsne(sm, &rsne_len);
 
@@ -5378,6 +5379,77 @@ int wpa_sm_get_status(struct wpa_sm *sm, char *buf, size_t buflen,
 	if (sm->security_profile) {
 		ret = os_snprintf(pos, end - pos, "security_profile=%u\n",
 			sm->security_profile->number);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+
+	if (sm->pmk_len) {
+		ret = os_snprintf(pos, end - pos, "pmk_len=%zu\n", sm->pmk_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.ptk_len) {
+		ret = os_snprintf(pos, end - pos, "ptk_len=%zu\n",
+				  sm->ptk.ptk_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.kck_len) {
+		ret = os_snprintf(pos, end - pos, "kck_len=%zu\n",
+				  sm->ptk.kck_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.kek_len) {
+		ret = os_snprintf(pos, end - pos, "kek_len=%zu\n",
+				  sm->ptk.kek_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.tk_len) {
+		ret = os_snprintf(pos, end - pos, "tk_len=%zu\n",
+				  sm->ptk.tk_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.kck2_len) {
+		ret = os_snprintf(pos, end - pos, "kck2_len=%zu\n",
+				  sm->ptk.kck2_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.kek2_len) {
+		ret = os_snprintf(pos, end - pos, "kek2_len=%zu\n",
+				  sm->ptk.kek2_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.kdk_len) {
+		ret = os_snprintf(pos, end - pos, "kdk_len=%zu\n",
+				  sm->ptk.kdk_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (sm->ptk.ltf_keyseed_len) {
+		ret = os_snprintf(pos, end - pos, "ltf_keyseed_len=%zu\n",
+				  sm->ptk.ltf_keyseed_len);
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+			      sm->pasn_group);
+	if (mic_len) {
+		ret = os_snprintf(pos, end - pos, "mic_len=%zu\n", mic_len);
 		if (os_snprintf_error(end - pos, ret))
 			return pos - buf;
 		pos += ret;
