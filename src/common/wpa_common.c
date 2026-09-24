@@ -64,7 +64,7 @@ static unsigned int wpa_kck2_len(int akmp)
 #endif /* CONFIG_IEEE80211R */
 
 
-unsigned int wpa_kek_len(int akmp, size_t pmk_len)
+unsigned int wpa_kek_len(int akmp, size_t pmk_len, u16 pasn_group)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_FILS_SHA384:
@@ -83,6 +83,12 @@ unsigned int wpa_kek_len(int akmp, size_t pmk_len)
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return pmk_len <= 32 ? 16 : 32;
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		if (pasn_group == 21 || pasn_group == 20)
+			return 32;
+		return 16;
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
@@ -582,7 +588,7 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 		   const u8 *addr1, const u8 *addr2,
 		   const u8 *nonce1, const u8 *nonce2,
 		   struct wpa_ptk *ptk, int akmp, int cipher,
-		   const u8 *z, size_t z_len, size_t kdk_len)
+		   const u8 *z, size_t z_len, size_t kdk_len, u16 pasn_group)
 {
 #define MAX_Z_LEN 66 /* with NIST P-521 */
 	u8 data[2 * ETH_ALEN + 2 * WPA_NONCE_LEN + MAX_Z_LEN];
@@ -638,7 +644,7 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	}
 
 	ptk->kck_len = wpa_kck_len(akmp, pmk_len);
-	ptk->kek_len = wpa_kek_len(akmp, pmk_len);
+	ptk->kek_len = wpa_kek_len(akmp, pmk_len, pasn_group);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	ptk->kdk_len = kdk_len;
 	if (ptk->tk_len == 0) {
@@ -914,7 +920,7 @@ int fils_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa, const u8 *aa,
 		os_memcpy(pos, dhss, dhss_len);
 
 	ptk->kck_len = 0;
-	ptk->kek_len = wpa_kek_len(akmp, pmk_len);
+	ptk->kek_len = wpa_kek_len(akmp, pmk_len, PASN_GROUP_NOT_SPECIFIED);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	if (wpa_key_mgmt_sha384(akmp))
 		*ick_len = 48;
@@ -1929,7 +1935,8 @@ int wpa_auth_802_1x_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa,
 {
 	return wpa_pmk_to_ptk(pmk, pmk_len, "Pairwise key expansion",
 			      spa, aa, snonce, anonce, ptk, akmp,
-			      cipher, dhss, dhss_len, kdk_len);
+			      cipher, dhss, dhss_len, kdk_len,
+			      PASN_GROUP_NOT_SPECIFIED);
 }
 
 
@@ -2824,7 +2831,7 @@ int wpa_pmk_r1_to_ptk(const u8 *pmk_r1, size_t pmk_r1_len,
 
 	ptk->kck_len = wpa_kck_len(akmp, key_len);
 	ptk->kck2_len = wpa_kck2_len(akmp);
-	ptk->kek_len = wpa_kek_len(akmp, key_len);
+	ptk->kek_len = wpa_kek_len(akmp, key_len, PASN_GROUP_NOT_SPECIFIED);
 	ptk->kek2_len = wpa_kek2_len(akmp);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	ptk->kdk_len = kdk_len;

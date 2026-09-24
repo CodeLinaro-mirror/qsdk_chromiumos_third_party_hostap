@@ -3160,7 +3160,8 @@ static int wpa_derive_ptk(struct wpa_state_machine *sm, const u8 *snonce,
 	ret = wpa_pmk_to_ptk(pmk, pmk_len, "Pairwise key expansion",
 			     wpa_auth_get_aa(sm), wpa_auth_get_spa(sm),
 			     sm->ANonce, snonce, ptk, akmp,
-			     sm->pairwise, z, z_len, kdk_len);
+			     sm->pairwise, z, z_len, kdk_len,
+			     sm->pasn_group);
 	if (ret) {
 		wpa_printf(MSG_DEBUG,
 			   "WPA: PTK derivation failed");
