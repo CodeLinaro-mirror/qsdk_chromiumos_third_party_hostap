@@ -43,6 +43,10 @@ static unsigned int wpa_kck_len(int akmp, size_t pmk_len)
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return pmk_len / 2;
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		return 32;
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
