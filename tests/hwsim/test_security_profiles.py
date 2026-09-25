@@ -2151,3 +2151,213 @@ def test_security_profile_9_sta_sec_prof(dev, apdev):
         hwsim_utils.test_connectivity(dev[0], hapd)
     finally:
         sta_cleanup(dev[0])
+
+def sec_prof_ap_all(apdev, suite_b_192=False):
+    params = hostapd.wpa3_params(ssid="sec-profs", password="12345678",
+                                 ieee80211w='2',
+                                 wpa_key_mgmt="OWE SAE-EXT-KEY FT-SAE-EXT-KEY EPPKE WPA-EAP-SHA256 WPA-EAP-SHA384 WPA-EAP-SUITE-B-192 FT-EAP FT-EAP-SHA384")
+    if suite_b_192:
+        params["openssl_ciphers"] = "SUITEB192"
+        params["eap_server"] = "1"
+        params["eap_user_file"] = "auth_serv/eap_user.conf"
+        params["ca_cert"] = "auth_serv/ec2-ca.pem"
+        params["server_cert"] = "auth_serv/ec2-server.pem"
+        params["private_key"] = "auth_serv/ec2-server.key"
+    else:
+        params.update(hostapd.radius_params())
+    params["ieee8021x"] = "1"
+    params['rsn_pairwise'] = 'GCMP-256'
+    params['group_cipher'] = 'GCMP-256'
+    params['group_mgmt_cipher'] = 'BIP-GMAC-256'
+    params['beacon_prot'] = '1'
+    params['sae_pwe'] = '2'
+    params['sae_groups'] = '19 20'
+    params['assoc_frame_encryption'] = '1'
+    params['pmksa_caching_privacy'] = '1'
+    params['eppke_unauth'] = '1'
+    params["eap_using_authentication_frames"] = "1"
+    params['security_profiles'] = '0 1 2 3 4 5 6 7 8 9'
+    params["mobility_domain"] = "a1b2"
+    params["r0_key_lifetime"] = "10000"
+    params["pmk_r1_push"] = "1"
+    params["reassociation_deadline"] = "1000"
+    params['nas_identifier'] = "nas1.w1.fi"
+    params['r1_key_holder'] = "000102030405"
+    params['r0kh'] = "ff:ff:ff:ff:ff:ff * 100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f"
+    params['r1kh'] = "00:00:00:00:00:00 00:00:00:00:00:00 100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f"
+    return hostapd.add_ap(apdev[0], params)
+
+def test_security_profile_0_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 0 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 0)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].connect("sec-profs",
+                       security_profiles="0", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 0, akm='00-0f-ac-29', auth_alg='9',
+                               eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_1_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 1 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 1)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].connect("sec-profs", sae_password="12345678",
+                       security_profiles="1", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 1, akm='00-0f-ac-24', auth_alg='9',
+                               eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_2_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 2 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 2)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].connect("sec-profs", sae_password="12345678",
+                       security_profiles="2", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 2, akm='00-0f-ac-25', auth_alg='9',
+                               eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_3_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 3 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 3)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].connect("sec-profs",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ca.pem",
+                       client_cert="auth_serv/user.pem",
+                       private_key="auth_serv/user.key",
+                       security_profiles="3", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 3, akm='00-0f-ac-5', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_4_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 4 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 4)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].connect("sec-profs",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ca.pem",
+                       client_cert="auth_serv/user.pem",
+                       private_key="auth_serv/user.key",
+                       security_profiles="4", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 4, akm='00-0f-ac-3', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_5_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 5 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 5)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].connect("sec-profs",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ca.pem",
+                       client_cert="auth_serv/user.pem",
+                       private_key="auth_serv/user.key",
+                       security_profiles="5", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 5, akm='00-0f-ac-23', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_6_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 6 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 6)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].connect("sec-profs",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ca.pem",
+                       client_cert="auth_serv/user.pem",
+                       private_key="auth_serv/user.key",
+                       security_profiles="6", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 6, akm='00-0f-ac-22', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_7_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 7 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 7)
+    hapd = sec_prof_ap_all(apdev, suite_b_192=True)
+
+    try:
+        dev[0].connect("sec-profs",
+                       openssl_ciphers="SUITEB192",
+                       eap="TLS",
+                       identity="tls user",
+                       ca_cert="auth_serv/ec2-ca.pem",
+                       client_cert="auth_serv/ec2-user.pem",
+                       private_key="auth_serv/ec2-user.key",
+                       security_profiles="7", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 7, akm='00-0f-ac-12', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_8_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 8 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 8)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].connect("sec-profs",
+                       security_profiles="8", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 8, akm='00-0f-ac-18', eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
+
+def test_security_profile_9_ap_all_sta_sec_prof(dev, apdev):
+    """Security Profile 9 with STA security profile config"""
+    enable_sta_security_profiles(dev[0], 9)
+    hapd = sec_prof_ap_all(apdev)
+
+    try:
+        dev[0].set("pasn_groups", "")
+        dev[0].connect("sec-profs", sae_password="12345678",
+                       security_profiles="9", scan_freq="2412")
+        hapd.wait_sta()
+        check_security_profile(hapd, dev[0], 9, akm='00-0f-ac-24', auth_alg='3',
+                               eht=False)
+        hwsim_utils.test_connectivity(dev[0], hapd)
+    finally:
+        sta_cleanup(dev[0])
