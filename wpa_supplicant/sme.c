@@ -1313,8 +1313,11 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 					 WPA_PARAM_SAE_PW_ID_CHANGE, 1);
 		}
 #endif /* CONFIG_SAE */
-	} else if (wpa_key_mgmt_eppke(ssid->key_mgmt) &&
-		   wpa_key_mgmt_only_enhanced_open(ssid->key_mgmt)) {
+	} else if ((wpa_key_mgmt_eppke(ssid->key_mgmt) &&
+		    wpa_key_mgmt_only_enhanced_open(ssid->key_mgmt)) ||
+		   (wpa_s->sel_security_profile &&
+		    wpa_s->sel_security_profile->key_mgmt ==
+		    WPA_KEY_MGMT_EPPKE)) {
 		/* EPPKE without base AKM: verify AP supports unauthenticated
 		 * EPPKE per IEEE P802.11bi/D4.0, 12.16.9.1 */
 		if (!ieee802_11_rsnx_capab(ap_rsnxe,
@@ -1612,7 +1615,6 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_ENC_ASSOC
 	} else if (wpa_s->sel_security_profile &&
 		   (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
-		   wpa_key_mgmt_sae(wpa_s->sel_security_profile->key_mgmt) &&
 		   (wpa_s->sel_security_profile->key_mgmt &
 		    WPA_KEY_MGMT_EPPKE)) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
