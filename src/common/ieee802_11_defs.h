@@ -695,21 +695,14 @@
 					    * EAP over Auth */
 #define SEC_PROF_OWE			8  /* OWE/None (18) */
 #define SEC_PROF_SAE			9  /* SAE (24) */
-#define SEC_PROF_FT_SAE			10 /* FT/SAE (25) */
-#define SEC_PROF_8021X			11 /* 802.1X (5) */
-#define SEC_PROF_8021X_FT		12 /* 802.1X+FT (3) */
-#define SEC_PROF_8021X_SHA384		13 /* 802.1X SHA384 (23) */
-#define SEC_PROF_8021X_FT384		14 /* 802.1X+FT SHA384 (22) */
-#define SEC_PROF_8021X_SUITEB		15 /* 802.1X Suite-B (12) */
-/* 16-119: Reserved */
+/* 10-119: Reserved */
 #define SEC_PROF_MAX			119
 
 static inline bool sec_prof_is_sae(int p)
 {
 	return p == SEC_PROF_EPPKE_SAE ||
 		p == SEC_PROF_EPPKE_FT_SAE ||
-		p == SEC_PROF_SAE ||
-		p == SEC_PROF_FT_SAE;
+		p == SEC_PROF_SAE;
 }
 
 /* Multiple BSSID element subelements */

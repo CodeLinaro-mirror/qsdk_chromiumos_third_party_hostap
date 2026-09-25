@@ -4991,30 +4991,6 @@ security_profile_table[] = {
 	{ 9, WPA_KEY_MGMT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
 	  false, false, false, -1 },
 
-	/* 10: FT‑SAE (AKM 25) */
-	{ 10, WPA_KEY_MGMT_FT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
-	/* 11: 802.1X (AKM 5) */
-	{ 11, WPA_KEY_MGMT_IEEE8021X_SHA256, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
-	/* 12: FT‑802.1X (AKM 3) */
-	{ 12, WPA_KEY_MGMT_FT_IEEE8021X, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
-	/* 13: 802.1X (AKM 23) */
-	{ 13, WPA_KEY_MGMT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
-	/* 14: FT‑802.1X (AKM 22) */
-	{ 14, WPA_KEY_MGMT_FT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
-	/* 15: 802.1X (AKM 12) */
-	{ 15, WPA_KEY_MGMT_IEEE8021X_SUITE_B_192, WPA_CIPHER_GCMP_256,
-	  false, false, false, -1 },
-
 #ifdef CONFIG_PQC
 	/* 16: PQC 802.1X (AKM 31), no ECP, SHA-512, ML-KEM-1024 */
 	{ 16, WPA_KEY_MGMT_PQC_8021X, WPA_CIPHER_GCMP_256,
