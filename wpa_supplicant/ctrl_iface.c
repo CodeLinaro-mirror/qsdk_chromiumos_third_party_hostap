@@ -4839,6 +4839,7 @@ static int wpa_supplicant_ctrl_iface_get_capability(
 	bool strict = false;
 	char field[50];
 	size_t len;
+	unsigned int key_mgmt = 0;
 
 	/* Determine whether or not strict checking was requested */
 	len = os_strlcpy(field, _field, sizeof(field));
@@ -4871,6 +4872,10 @@ static int wpa_supplicant_ctrl_iface_get_capability(
 	}
 
 	res = wpa_drv_get_capa(wpa_s, &capa);
+	if (res == 0)
+		key_mgmt = capa.key_mgmt;
+	else
+		key_mgmt = 0xffffffff;
 
 	if (os_strcmp(field, "pairwise") == 0)
 		return ctrl_iface_get_capability_pairwise(res, strict, &capa,
@@ -5075,6 +5080,61 @@ static int wpa_supplicant_ctrl_iface_get_capability(
 		if (os_snprintf_error(buflen, res))
 			return -1;
 		return res;
+	}
+
+	if (os_strcmp(field, "security_profiles") == 0 &&
+	    wpas_security_profile_active(wpa_s)) {
+		u32 sec_profs = 0;
+		int i;
+		bool first = true;
+
+#ifdef CONFIG_SAE
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE)
+			sec_profs |= BIT(SEC_PROF_SAE);
+#endif /* CONFIG_SAE */
+#if defined(CONFIG_ENC_ASSOC) && defined(CONFIG_PASN) && defined(CONFIG_SAE)
+		if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) &&
+		    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
+		    (wpa_s->drv_flags2 &
+		     WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION))
+			sec_profs |= BIT(SEC_PROF_EPPKE_NO_AUTH) |
+				BIT(SEC_PROF_EPPKE_SAE) |
+				BIT(SEC_PROF_EPPKE_FT_SAE);
+#endif /* CONFIG_ENC_ASSOC && CONFIG_PASN && CONFIG_SAE */
+#if defined(CONFIG_ENC_ASSOC)
+		if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_802_1X_AUTH) &&
+		    (wpa_s->drv_flags2 &
+		     WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION)) {
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA256)
+				sec_profs |= BIT(SEC_PROF_8021X_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT)
+				sec_profs |= BIT(SEC_PROF_8021X_FT_AUTH);
+			if (key_mgmt &
+			    WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384)
+				sec_profs |= BIT(SEC_PROF_8021X_FT384_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192)
+				sec_profs |= BIT(SEC_PROF_8021X_SUITEB_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA384)
+				sec_profs |= BIT(SEC_PROF_8021X_SHA384_AUTH);
+		}
+
+#endif /* CONFIG_ENC_ASSOC */
+		if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE)
+			sec_profs |= BIT(SEC_PROF_OWE);
+
+		len = 0;
+		for (i = 0; i < 32; i++) {
+			if (!(sec_profs & BIT(i)))
+				continue;
+			res = os_snprintf(buf + len, buflen - len, "%s%d",
+					  first ? "" : " ", i);
+			if (os_snprintf_error(buflen - len, res))
+				return -1;
+			len += res;
+			first = false;
+		}
+
+		return len;
 	}
 
 #ifdef CONFIG_PQC

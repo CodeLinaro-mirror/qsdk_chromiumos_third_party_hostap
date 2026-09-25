@@ -2362,6 +2362,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_CAPA_KEY_MGMT_CCKM		0x00400000
 #define WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY	0x01000000
 #define WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY	0x02000000
+#define WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA384	0x04000000
 	/** Bitfield of supported key management suites */
 	unsigned int key_mgmt;
 	unsigned int key_mgmt_iftype[WPA_IF_MAX];
