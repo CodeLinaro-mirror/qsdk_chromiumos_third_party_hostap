@@ -4682,6 +4682,7 @@ int wpa_pasn_validate_rsne(const struct wpa_ie_data *data, bool is_eppke)
 #ifdef CONFIG_SAE
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 	/* fall through */
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_FILS

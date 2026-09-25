@@ -534,6 +534,7 @@ static struct wpabuf * wpas_pasn_get_wrapped_data(struct pasn_data *pasn)
 #endif /* CONFIG_ENC_ASSOC */
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 #ifdef CONFIG_SAE
 		if (pasn->trans_seq == 0)
 			return wpas_pasn_wd_sae_commit(pasn);
@@ -575,6 +576,7 @@ static u8 wpas_pasn_get_wrapped_data_format(struct pasn_data *pasn)
 	switch (pasn->akmp) {
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return WPA_PASN_WRAPPED_DATA_SAE;
 	case WPA_KEY_MGMT_FILS_SHA256:
 	case WPA_KEY_MGMT_FILS_SHA384:
@@ -670,6 +672,12 @@ struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 	if (wpa_key_mgmt_ft(pasn->akmp)) {
 #ifdef CONFIG_IEEE80211R
 		pmkid = pasn->pmk_r1_name;
+		/*
+		 * Note: Even when PMKSA is available, also add wrapped data as
+		 * it is possible that the PMKID is no longer valid at the AP.
+		 */
+		if (wrapped_data != WPA_PASN_WRAPPED_DATA_NO && !verify)
+			wrapped_data_buf = wpas_pasn_get_wrapped_data(pasn);
 #else /* CONFIG_IEEE80211R */
 		goto fail;
 #endif /* CONFIG_IEEE80211R */
@@ -975,7 +983,7 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 		return 0;
 	}
 
-	if (wpa_key_mgmt_ft(pasn->akmp)) {
+	if (wpa_key_mgmt_ft(pasn->akmp) && pasn->pmk_r1_len > 0) {
 #ifdef CONFIG_IEEE80211R
 		wpa_printf(MSG_DEBUG, "PASN: FT: Using PMK-R1");
 		pasn->pmk_len = pasn->pmk_r1_len;
@@ -1022,6 +1030,7 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 
 #ifdef CONFIG_SAE
 	if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+	    pasn->akmp == WPA_KEY_MGMT_FT_SAE_EXT_KEY ||
 	    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 		int ret;
 

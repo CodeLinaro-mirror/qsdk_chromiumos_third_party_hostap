@@ -401,6 +401,7 @@ static struct wpabuf * pasn_get_wrapped_data(struct pasn_data *pasn)
 #endif /* CONFIG_ENC_ASSOC */
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 #ifdef CONFIG_SAE
 		return pasn_get_sae_wd(pasn);
 #else /* CONFIG_SAE */
@@ -461,6 +462,7 @@ pasn_derive_keys(struct pasn_data *pasn,
 #ifdef CONFIG_SAE
 		case WPA_KEY_MGMT_SAE:
 		case WPA_KEY_MGMT_SAE_EXT_KEY:
+		case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 			if (pasn->sae.state == SAE_COMMITTED) {
 				pmk_len = pasn->sae.pmk_len;
 				os_memcpy(pmk, pasn->sae.pmk, pmk_len);
@@ -620,6 +622,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 		pmkid = pmksa->pmkid;
 #ifdef CONFIG_SAE
 	} else if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		   pasn->akmp == WPA_KEY_MGMT_FT_SAE_EXT_KEY ||
 		   pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 		wpa_printf(MSG_DEBUG, "PASN: Use SAE PMKID");
 		pmkid = pasn->sae.pmkid;
@@ -1094,6 +1097,7 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 
 #ifdef CONFIG_SAE
 		if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		    pasn->akmp == WPA_KEY_MGMT_FT_SAE_EXT_KEY ||
 		    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 			ret = pasn_wd_handle_sae_commit(pasn, own_addr,
 							peer_addr,
@@ -1358,6 +1362,7 @@ int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
 
 #ifdef CONFIG_SAE
 		if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		    pasn->akmp == WPA_KEY_MGMT_FT_SAE_EXT_KEY ||
 		    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 			ret = pasn_wd_handle_sae_confirm(pasn, peer_addr,
 							 wrapped_data);
