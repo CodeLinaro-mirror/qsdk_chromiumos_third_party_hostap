@@ -1510,6 +1510,7 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	int omit_rsnxe = 0;
 	unsigned int keys_to_clear = 0;
 	bool set_suites_done = false;
+	bool local_ft;
 
 	if (bss == NULL) {
 		wpa_msg(wpa_s, MSG_ERROR, "SME: No scan result available for "
@@ -1900,8 +1901,10 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	if (ie && ie[1] >= MOBILITY_DOMAIN_ID_LEN)
 		md = ie + 2;
 	wpa_sm_set_ft_params(wpa_s->wpa, ie, ie ? 2 + ie[1] : 0);
-	if (md && (!wpa_key_mgmt_ft(ssid->key_mgmt) ||
-		   !wpa_key_mgmt_ft(wpa_s->key_mgmt)))
+	local_ft = wpa_key_mgmt_ft(ssid->key_mgmt) ||
+		(wpa_s->sel_security_profile &&
+		 wpa_key_mgmt_ft(wpa_s->sel_security_profile->key_mgmt));
+	if (md && (!local_ft || !wpa_key_mgmt_ft(wpa_s->key_mgmt)))
 		md = NULL;
 	if (md) {
 		/* Prepare for the next transition */
