@@ -14,11 +14,16 @@ from test_suite_b import check_suite_b_192_capa, suite_b_as_params
 from test_ap_ft import ft_params1, ft_params2, run_roams
 from test_eppke import check_eppke_capab
 
-def enable_sta_security_profiles(dev):
+def enable_sta_security_profiles(dev, sec_prof=None):
     try:
         dev.set("security_profiles", "1")
     except:
         raise HwsimSkip("Security profiles not supported")
+
+    if sec_prof is not None:
+        profs = dev.get_capability("security_profiles")
+        if str(sec_prof) not in profs:
+            raise HwsimSkip("Security profile %d not supported" % sec_prof)
 
 def disable_sta_security_profiles(dev):
     try:
@@ -167,7 +172,7 @@ def test_security_profile_0_eppke(dev, apdev):
     hapd = start_eppke_ap_security_profile_0(apdev[0])
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 0)
         dev[0].connect("sp0-eppke", scan_freq="2412", key_mgmt="EPPKE",
                        ieee80211w="2", beacon_prot="1",
                        pairwise="GCMP-256", group="GCMP-256",
@@ -193,7 +198,7 @@ def test_security_profile_1_mixed_sae_ext_sta(dev, apdev):
 
     try:
         # SAE-EXT-KEY STA connecting to AP that supports both EPPKE and SAE-EXT-KEY
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         dev[0].connect("sp1-mixed", psk=passphrase,
@@ -228,7 +233,7 @@ def test_security_profile_0_mixed_eppke_sta(dev, apdev):
 
     try:
         # EPPKE STA connecting to AP that advertises EPPKE + Security Profiles 0 and 8
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 0)
         dev[0].connect("sp1-eppke-base", scan_freq="2412",
                        key_mgmt="EPPKE",
                        ieee80211w="2", beacon_prot="1",
@@ -272,7 +277,7 @@ def test_security_profile_3_eap_tls_mlo_single_link(dev, apdev):
         # Non-AP MLD supplicant
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add(wpas_iface)
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 3)
 
         # Connect with EAP-TLS over IEEE 802.1X Authentication Frames
         wpas.connect(ssid,
@@ -322,7 +327,7 @@ def test_security_profile_5_eap_sha384_mlo(dev, apdev):
 
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add(wpas_iface)
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 5)
 
         wpas.connect(ssid,
                      key_mgmt="WPA-EAP-SHA384",
@@ -378,7 +383,7 @@ def test_security_profile_7_eap_suite_b_192_mlo(dev, apdev):
 
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add(wpas_iface)
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 7)
 
         wpas.connect(ssid,
                      key_mgmt="WPA-EAP-SUITE-B-192",
@@ -463,7 +468,7 @@ def test_eppke_sp_mlo_two_link(dev, apdev):
         params['channel'] = '6'
         hapd1 = eht_mld_enable_ap(hapd_iface, 1, params)
 
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 1)
         wpas.set("pasn_groups", "")
         wpas.set("sae_pwe", "1")
         wpas.connect(ssid, sae_password=passphrase, scan_freq="2412 2437",
@@ -495,7 +500,7 @@ def test_sp9_sp_mlo_two_link(dev, apdev):
         params['channel'] = '6'
         hapd1 = eht_mld_enable_ap(hapd_iface, 1, params)
 
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 9)
         wpas.set("pasn_groups", "")
         wpas.set("sae_pwe", "1")
         wpas.connect(ssid, sae_password=passphrase, scan_freq="2412 2437",
@@ -590,7 +595,7 @@ def test_security_profile_9_sae(dev, apdev):
     hapd, passphrase = start_sae_ap_security_profile_9(apdev[0])
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         dev[0].connect("sp9-sae", psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -640,7 +645,7 @@ def test_security_profile_9_11ax_sta(dev, apdev):
     try:
         # 11ax STA connecting with SAE-EXT-KEY and GCMP-256
         # Disable EHT on this STA to make it 11ax-only
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         dev[0].connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -692,7 +697,7 @@ def test_security_profile_9_sae_ext_with_rsnxe_mask(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         dev[0].connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -751,7 +756,7 @@ def test_security_profile_9_psk2_base_sta_sae_ext_key(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         # Use sae_pwe=2 (both loop and H2E) on the STA so it does not
         # strictly require H2E from the RSNXE. The AP's RSNXE
         # has H2E suppressed (rsnxe_capab_mask=20); the Security Profile
@@ -820,7 +825,7 @@ def test_security_profile_9_sae_base_sta_sae_ext_key(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         # STA uses SAE-EXT-KEY/GCMP-256 via the security profile override.
@@ -884,7 +889,7 @@ def test_security_profile_9_sae_ccmp_base_sta_sae_ext_key(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         # STA uses SAE-EXT-KEY/GCMP-256 via the security profile override.
@@ -951,7 +956,7 @@ def test_security_profile_override_akm_cipher_9(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         # STA configured with GCMP-256. The RSNE only has CCMP, so
@@ -1019,7 +1024,7 @@ def test_security_profile_override_akm_cipher_8(dev, apdev):
         # without the security profile override the BSS would be rejected.
         # Our code detects the Security Profile element and augments
         # ie.pairwise_cipher with GCMP-256, allowing the connection.
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 8)
         dev[0].connect(ssid, key_mgmt="OWE", ieee80211w="2",
                        pairwise="GCMP-256", group="GCMP-256",
                        group_mgmt="BIP-GMAC-256", scan_freq="2412")
@@ -1082,7 +1087,7 @@ def test_security_profile_override_rsnx_capab(dev, apdev):
     bssid = hapd.own_addr()
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         dev[0].scan_for_bss(bssid, freq=2412)
@@ -1143,7 +1148,7 @@ def test_security_profile_override_rsn_caps_mfpr(dev, apdev):
         raise
 
     try:
-        enable_sta_security_profiles(dev[0])
+        enable_sta_security_profiles(dev[0], 9)
         dev[0].set("sae_pwe", "2")
         dev[0].set("sae_groups", "")
         # STA connects with ieee80211w=2 (MFPR=1). The RSNE has
@@ -1328,7 +1333,7 @@ def test_rsn_override_three_layer_coexistence(dev, apdev):
                             sta1["AKMSuiteSelector"])
 
         # ---- STA 2: Security Profile 9 - SAE-EXT-KEY / GCMP-256 ----
-        enable_sta_security_profiles(dev[2])
+        enable_sta_security_profiles(dev[2], 9)
         dev[2].set("sae_pwe", "2")
         dev[2].set("sae_groups", "")
         dev[2].connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -1464,7 +1469,7 @@ def test_rsn_override_four_layer_coexistence(dev, apdev):
         # ---- STA 3: Security Profile 9 - SAE-EXT-KEY / GCMP-256 ----
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add('wlan5')
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 9)
         wpas.set("sae_pwe", "2")
         wpas.set("sae_groups", "")
         wpas.connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -1570,7 +1575,7 @@ def test_rsn_override_eap_sha256_sp9(dev, apdev):
             raise Exception("STA1: Missing MFP flag")
 
         # ---- STA 2: Security Profile 9 - SAE-EXT-KEY / GCMP-256 ----
-        enable_sta_security_profiles(dev[2])
+        enable_sta_security_profiles(dev[2], 9)
         dev[2].set("sae_pwe", "2")
         dev[2].set("sae_groups", "")
         dev[2].connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -1657,7 +1662,7 @@ def test_rsn_override_psk_owe_sp9(dev, apdev):
                             sta1["AKMSuiteSelector"])
 
         # ---- STA 2: Security Profile 9 - SAE-EXT-KEY / GCMP-256 ----
-        enable_sta_security_profiles(dev[2])
+        enable_sta_security_profiles(dev[2], 9)
         dev[2].set("sae_pwe", "2")
         dev[2].set("sae_groups", "")
         dev[2].connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -1751,7 +1756,7 @@ def test_rsn_override_sae_sp1_eppke(dev, apdev):
         # ---- STA 2: Security Profile 0 (EPPKE) ----
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add('wlan5')
-        enable_sta_security_profiles(wpas)
+        enable_sta_security_profiles(wpas, 0)
         wpas.connect(ssid, scan_freq="2412", key_mgmt="EPPKE",
                      ieee80211w="2",
                      pairwise="GCMP-256", group="GCMP-256",
@@ -1866,7 +1871,7 @@ def test_rsn_override_five_layer_eppke(dev, apdev):
         # ---- STA 3: Security Profile 9 - SAE-EXT-KEY / GCMP-256 ----
         wpas_sae_ext = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas_sae_ext.interface_add('wlan5')
-        enable_sta_security_profiles(wpas_sae_ext)
+        enable_sta_security_profiles(wpas_sae_ext, 9)
         wpas_sae_ext.set("sae_pwe", "2")
         wpas_sae_ext.set("sae_groups", "")
         wpas_sae_ext.connect(ssid, psk=passphrase, key_mgmt="SAE-EXT-KEY",
@@ -1881,7 +1886,7 @@ def test_rsn_override_five_layer_eppke(dev, apdev):
         # ---- STA 4: Security Profile 0 - EPPKE ----
         wpas_eppke = WpaSupplicant(global_iface='/tmp/wpas-wlan6')
         wpas_eppke.interface_add('wlan6')
-        enable_sta_security_profiles(wpas_eppke)
+        enable_sta_security_profiles(wpas_eppke, 0)
         wpas_eppke.connect(ssid, scan_freq="2412", key_mgmt="EPPKE",
                            ieee80211w="2",
                            pairwise="GCMP-256", group="GCMP-256",
@@ -1912,7 +1917,7 @@ def test_rsn_override_five_layer_eppke(dev, apdev):
 
 def run_security_profile_sta_proto(dev, apdev, sp_elem):
     check_owe_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 8)
 
     ssid = "security profile proto"
     params = hostapd.wpa2_params(ssid=ssid, passphrase=None)
@@ -1949,7 +1954,7 @@ def test_security_profile_sta_proto_valid(dev, apdev):
 
 def run_security_profile_sta_proto_sae(dev, apdev, sp_elem):
     check_owe_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 9)
 
     ssid = "security profile proto sae"
     password = "sae password"
@@ -1986,7 +1991,7 @@ def test_security_profile_sta_proto_valid_sae(dev, apdev):
 
 def run_security_profile_ap_proto_sae(dev, apdev, sp_elem, failure=False):
     check_owe_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 9)
 
     ssid = "security profile proto sae"
     password = "sae password"
@@ -2043,7 +2048,7 @@ def test_security_profile_ap_proto_invalid_sae(dev, apdev):
 def test_security_profile_1_sta_sec_prof(dev, apdev):
     """Security Profile 1 with STA security profile config"""
     check_eppke_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 1)
 
     ssid = "test-sp1-sta-sec-prof"
     password = "12345678"
@@ -2078,7 +2083,7 @@ def test_security_profile_1_sta_sec_prof(dev, apdev):
 def test_security_profile_3_sta_sec_prof(dev, apdev):
     """Security Profile 3 with STA security profile config"""
     check_eppke_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 3)
 
     ssid = "test-sp3-sta-sec-prof"
 
@@ -2116,7 +2121,7 @@ def test_security_profile_3_sta_sec_prof(dev, apdev):
 def test_security_profile_9_sta_sec_prof(dev, apdev):
     """Security Profile 9 with STA security profile config"""
     check_eppke_capab(dev[0])
-    enable_sta_security_profiles(dev[0])
+    enable_sta_security_profiles(dev[0], 9)
 
     ssid = "test-sp9-sta-sec-prof"
     password = "12345678"
